@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectForAI, applyAIResults, requestCategories } from '../src/ai.js';
+import { selectForAI, applyAIResults, requestCategories, generateAccessCode } from '../src/ai.js';
+import { exportBackup, importBackup, setAiToken } from '../src/store.js';
 import { emptyState, mergeTransactions, setCategory, recategorize, monthSummary } from '../src/store.js';
 
 function stateWith(tx) {
@@ -52,15 +53,16 @@ test('applyAIResults: reguły AI, przeliczenie, odrzucenie złych kategorii', ()
 test('requestCategories: poprawna odpowiedź i błędy po polsku', async () => {
   const ok = async (url, init) => {
     assert.equal(url, 'https://ai.example/categorize');
+    assert.equal(init.headers.Authorization, 'Bearer kod-123');
     assert.deepEqual(JSON.parse(init.body), { items: [{ id: 'a', name: 'A', amount: -1 }] });
     return new Response('{"results":[{"id":"a","category":"Zakupy"}]}', { status: 200 });
   };
-  assert.deepEqual(await requestCategories('https://ai.example/', [{ id: 'a', name: 'A', amount: -1 }], ok),
+  assert.deepEqual(await requestCategories('https://ai.example/', [{ id: 'a', name: 'A', amount: -1 }], 'kod-123', ok),
     [{ id: 'a', category: 'Zakupy' }]);
   const limited = async () => new Response('{}', { status: 429 });
-  await assert.rejects(requestCategories('https://ai.example', [], limited), /Za dużo zapytań/);
+  await assert.rejects(requestCategories('https://ai.example', [], 'k', limited), /Za dużo zapytań/);
   const offline = async () => { throw new TypeError('Failed to fetch'); };
-  await assert.rejects(requestCategories('https://ai.example', [], offline), /Brak połączenia/);
+  await assert.rejects(requestCategories('https://ai.example', [], 'k', offline), /Brak połączenia/);
 });
 
 test('AI „Inne” zostawia transakcję do sprawdzenia, ale nie wysyła jej ponownie', () => {
@@ -70,4 +72,18 @@ test('AI „Inne” zostawia transakcję do sprawdzenia, ale nie wysyła jej pon
   assert.equal(z.needsReview, true);
   assert.equal(z.source, 'ai');
   assert.deepEqual(selectForAI(state), []);
+});
+
+test('kod dostępu: losowy, długi i poza kopią zapasową', async () => {
+  const a = generateAccessCode();
+  const b = generateAccessCode();
+  assert.notEqual(a, b);
+  assert.match(a, /^dn-[A-Za-z0-9_-]{24}$/);
+  const state = setAiToken(stateWith(tx), `  ${a} `);
+  assert.equal(state.settings.aiToken, a);
+  const backup = exportBackup(state);
+  assert.ok(!backup.includes(a));
+  assert.equal(importBackup(backup).settings.aiToken, '');
+  const unauthorized = async () => new Response('{}', { status: 401 });
+  await assert.rejects(requestCategories('https://ai.example', [], 'zly', unauthorized), /kod dostępu/);
 });

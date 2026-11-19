@@ -4,6 +4,9 @@ Mały serwer, który przyjmuje z aplikacji nazwy nierozpoznanych sklepów i kwot
 pyta Claude o kategorie i odsyła same nazwy kategorii.
 
 - Klucz API Anthropic jest **sekretem Workera** – nie ma go w repo ani w aplikacji.
+- Działa tylko z **kodem dostępu** (sekret `APP_TOKENS`, kody oddzielone przecinkami, min. 16 znaków).
+  Kod generuje się w aplikacji (Ustawienia → Podpowiedzi AI → Wygeneruj nowy kod) i dopisuje do sekretu.
+  Usunięcie kodu z sekretu odcina dany telefon.
 - Przyjmuje zapytania tylko z `ALLOWED_ORIGIN` (adres aplikacji), najwyżej 10 na minutę z jednego IP,
   najwyżej 40 sklepów naraz.
 - Niczego nie zapisuje i nie loguje treści zapytań.
@@ -22,7 +25,9 @@ pyta Claude o kategorie i odsyła same nazwy kategorii.
    npx wrangler deploy
    npx wrangler secret put ANTHROPIC_API_KEY   # wklej klucz z kroku 1
    ```
-4. `wrangler deploy` wypisze adres w stylu `https://dinero-ai.<twoja-nazwa>.workers.dev`.
+4. Dodaj sekret `APP_TOKENS` z kodami dostępu (Cloudflare → Worker → Settings →
+   Runtime variables and secrets → typ Secret).
+5. `wrangler deploy` wypisze adres w stylu `https://dinero-ai.<twoja-nazwa>.workers.dev`.
    Ten adres trzeba wpisać w `src/config.js` aplikacji i w CSP w `index.html`.
 
 ## Testy

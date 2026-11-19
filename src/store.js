@@ -9,7 +9,7 @@ const VERSION = 1;
 export function emptyState() {
   return {
     version: VERSION, transactions: [], rules: {}, aiRules: {}, budgets: {}, goals: [],
-    settings: { ownerNames: [], aiEnabled: false }
+    settings: { ownerNames: [], aiEnabled: false, aiToken: '' }
   };
 }
 
@@ -53,7 +53,8 @@ function validateState(data) {
       ownerNames: Array.isArray(data.settings?.ownerNames)
         ? data.settings.ownerNames.filter((n) => typeof n === 'string')
         : [],
-      aiEnabled: data.settings?.aiEnabled === true
+      aiEnabled: data.settings?.aiEnabled === true,
+      aiToken: typeof data.settings?.aiToken === 'string' ? data.settings.aiToken : ''
     }
   };
 }
@@ -124,6 +125,11 @@ export function setOwnerNames(state, names) {
   return recategorize(next);
 }
 
+/** Zapisuje kod dostępu do pośrednika AI (tylko w tym telefonie). */
+export function setAiToken(state, token) {
+  return { ...state, settings: { ...state.settings, aiToken: String(token ?? '').trim() } };
+}
+
 /** Włącza lub wyłącza podpowiedzi AI. */
 export function setAiEnabled(state, enabled) {
   return { ...state, settings: { ...state.settings, aiEnabled: enabled === true } };
@@ -170,9 +176,10 @@ export function months(state) {
   return [...new Set(state.transactions.map((t) => t.date.slice(0, 7)))].sort().reverse();
 }
 
-/** Kopia zapasowa jako tekst JSON. */
+/** Kopia zapasowa jako tekst JSON. Kod dostępu do AI nie trafia do kopii. */
 export function exportBackup(state) {
-  return JSON.stringify({ app: 'dinero', exportedAt: new Date().toISOString(), ...state }, null, 2);
+  const settings = { ...state.settings, aiToken: '' };
+  return JSON.stringify({ app: 'dinero', exportedAt: new Date().toISOString(), ...state, settings }, null, 2);
 }
 
 /** Odtworzenie z kopii; rzuca błąd przy pliku, który nie jest kopią z tej aplikacji. */
