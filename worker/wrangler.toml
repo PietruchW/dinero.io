@@ -2,6 +2,8 @@ name = "dinero-ai"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
+# Bez dodatkowych adresów dla poszczególnych wersji – tylko jeden, stały adres Workera.
+preview_urls = false
 
 [vars]
 # Jedyny adres, z którego Worker przyjmuje zapytania (aplikacja na GitHub Pages).

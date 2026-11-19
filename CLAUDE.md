@@ -51,7 +51,8 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 
 1. ✅ Fundament: import CSV, kategorie, zapis lokalny, kopia zapasowa, PWA.
 2. Ekrany wg makiety: limity per kategoria, cele oszczędnościowe, dopracowany wygląd.
-3. AI: ✅ podpowiedzi kategorii (kod gotowy; czeka na wdrożenie Workera i wpisanie
-   `AI_URL` + adresu w `connect-src` CSP). Do zrobienia: podsumowanie miesiąca.
+3. AI: ✅ podpowiedzi kategorii. Worker: `https://dinero-ai.w-pietraszewski.workers.dev`
+   (wdrażany automatycznie przez Cloudflare Workers Builds z katalogu `worker/` po każdym
+   scaleniu do `main`). Do zrobienia: podsumowanie miesiąca.
    Zasady: do AI idą tylko nazwa sklepu i kwota (bez przelewów do osób), klucz API
    wyłącznie jako sekret w Workerze, aplikacja musi działać bez AI.
