@@ -5,10 +5,10 @@ import { readStatement } from './importer.js';
 import { CATEGORIES } from './categorize.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
-  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled
+  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken
 } from './store.js';
 import { AI_URL } from './config.js';
-import { selectForAI, applyAIResults, requestCategories } from './ai.js';
+import { selectForAI, applyAIResults, requestCategories, generateAccessCode } from './ai.js';
 
 const COLORS = {
   'Jedzenie': '#D08C3E',
@@ -42,7 +42,7 @@ const ui = {
 };
 
 function aiReady() {
-  return Boolean(AI_URL) && state.settings.aiEnabled;
+  return Boolean(AI_URL) && state.settings.aiEnabled && Boolean(state.settings.aiToken);
 }
 
 /** Wysyła nierozpoznane sklepy do AI i zapisuje podpowiedzi. */
@@ -52,7 +52,7 @@ async function runAI() {
   ui.aiBusy = true;
   render();
   try {
-    const results = await requestCategories(AI_URL, items);
+    const results = await requestCategories(AI_URL, items, state.settings.aiToken);
     const { state: next, applied } = applyAIResults(state, results);
     state = next;
     if (persist()) {
@@ -270,6 +270,11 @@ function ustawieniaView() {
     <p class="muted">Gdy włączone, nierozpoznane płatności są wysyłane do AI (Claude) przez serwer pośredniczący, który niczego nie zapisuje. Wysyłana jest tylko nazwa sklepu i kwota – bez dat, numerów kont, tytułów i bez przelewów do osób. Każdą podpowiedź możesz zmienić.</p>
     <label class="toggle">Włącz podpowiedzi AI
       <input type="checkbox" data-action="ai-toggle" ${state.settings.aiEnabled ? 'checked' : ''}></label>
+    <label for="ai-token" class="muted">Kod dostępu do AI. Bez niego AI nie działa. Kod zostaje tylko w tym telefonie i nie trafia do kopii zapasowej.</label>
+    <input id="ai-token" class="text-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(state.settings.aiToken)}" placeholder="dn-…">
+    <button type="button" class="btn" data-action="save-token">Zapisz kod</button>
+    <button type="button" class="btn secondary" data-action="gen-token">Wygeneruj nowy kod</button>
+    <p class="muted">Wygenerowany kod trzeba jeszcze dodać na serwerze AI (zrobi to osoba, która nim zarządza).</p>
   </section>` : ''}
   <section class="card">
     <h2>Kopia zapasowa</h2>
@@ -338,6 +343,14 @@ app.addEventListener('click', (e) => {
   }
   if (action === 'ai') runAI();
   if (action === 'backup') saveBackup();
+  if (action === 'gen-token') {
+    document.getElementById('ai-token').value = generateAccessCode();
+  }
+  if (action === 'save-token') {
+    state = setAiToken(state, document.getElementById('ai-token').value);
+    if (persist()) ui.message = { kind: 'ok', text: 'Kod dostępu zapisany.' };
+    render();
+  }
   if (action === 'save-owner') {
     const input = document.getElementById('owner-names');
     state = setOwnerNames(state, input.value.split(','));
@@ -390,7 +403,7 @@ app.addEventListener('change', async (e) => {
     try {
       const restored = importBackup(await el.files[0].text());
       if (window.confirm(`Zastąpić obecne dane kopią (${restored.transactions.length} transakcji)?`)) {
-        state = restored;
+        state = setAiToken(restored, state.settings.aiToken);
         if (persist()) ui.message = { kind: 'ok', text: 'Dane odtworzone z kopii.' };
       }
     } catch {

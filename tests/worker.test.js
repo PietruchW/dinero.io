@@ -3,15 +3,20 @@ import assert from 'node:assert/strict';
 import { handle, validateItems, parseResults } from '../worker/src/index.js';
 
 const ORIGIN = 'https://pietruchw.github.io';
-const env = { ANTHROPIC_API_KEY: 'test-key', ALLOWED_ORIGIN: ORIGIN, MODEL: 'test-model' };
+const CODE = 'kod-julii-1234567890';
+const env = {
+  ANTHROPIC_API_KEY: 'test-key', ALLOWED_ORIGIN: ORIGIN, MODEL: 'test-model',
+  APP_TOKENS: ` kod-wojtka-abcdefghij , ${CODE}, krotki`
+};
 const items = [
   { id: 'zdunek mamuszki', name: 'Zdunek Mamuszki Gdansk', amount: -1772.01 },
   { id: 'cafe x', name: 'Cafe X', amount: -14 }
 ];
 
-function req(body, { origin = ORIGIN, method = 'POST', path = '/categorize' } = {}) {
+function req(body, { origin = ORIGIN, method = 'POST', path = '/categorize', code = CODE } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (origin) headers.Origin = origin;
+  if (code) headers.Authorization = `Bearer ${code}`;
   return new Request(`https://dinero-ai.example.workers.dev${path}`, {
     method,
     headers,
@@ -92,4 +97,18 @@ test('parseResults: odporność na śmieci wokół JSON', () => {
     [{ id: 'cafe x', category: 'Wyjścia' }]);
   assert.deepEqual(parseResults('nie wiem', items), []);
   assert.deepEqual(parseResults('{"results": "nie"}', items), []);
+});
+
+test('worker: kod dostępu – brak, zły, za krótki i brak konfiguracji', async () => {
+  const calls = [];
+  const claude = fakeClaude('{"results":[]}', calls);
+  assert.equal((await handle(req({ items }, { code: null }), env, claude)).status, 401);
+  assert.equal((await handle(req({ items }, { code: 'kod-julii-1234567891' }), env, claude)).status, 401);
+  // Wpis krótszy niż 16 znaków w sekrecie jest ignorowany.
+  assert.equal((await handle(req({ items }, { code: 'krotki' }), env, claude)).status, 401);
+  assert.equal((await handle(req({ items }), { ...env, APP_TOKENS: '' }, claude)).status, 503);
+  assert.equal(calls.length, 0);
+  assert.equal((await handle(req({ items }, { code: 'kod-wojtka-abcdefghij' }), env, claude)).status, 200);
+  // Preflight przechodzi bez kodu (przeglądarka nie wysyła nagłówków w OPTIONS).
+  assert.equal((await handle(req(null, { method: 'OPTIONS', code: null }), env)).status, 204);
 });

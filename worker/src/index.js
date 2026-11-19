@@ -1,6 +1,7 @@
 // Pośrednik AI dla Dinero (Cloudflare Worker).
 // Przyjmuje listę nierozpoznanych sklepów z aplikacji, pyta Claude o kategorie
 // i zwraca tylko nazwy kategorii. Klucz API jest sekretem Workera (nigdy w repo).
+// Dostęp tylko z kodem (sekret APP_TOKENS) – adres Workera jest jawny, kody nie.
 // Worker niczego nie zapisuje i nie loguje treści zapytań.
 
 export const CATEGORIES = [
@@ -38,7 +39,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin'
   };
@@ -48,6 +49,32 @@ function json(status, body, origin) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
   if (origin) Object.assign(headers, corsHeaders(origin));
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+/** Porównanie w stałym czasie (nie zdradza, ile znaków kodu się zgadza). */
+function safeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Kody dostępu z sekretu APP_TOKENS (oddzielone przecinkami, min. 16 znaków).
+ * Zwraca 'ok', 'missing_config' albo 'denied'.
+ */
+export function checkAccess(request, env) {
+  const tokens = String(env.APP_TOKENS ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 16);
+  if (tokens.length === 0) return 'missing_config';
+  const header = request.headers.get('Authorization') ?? '';
+  const given = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (!given) return 'denied';
+  let ok = false;
+  for (const t of tokens) ok = safeEqual(t, given) || ok;
+  return ok ? 'ok' : 'denied';
 }
 
 /** Sprawdza i czyści wejście. Zwraca listę pozycji albo null przy złym formacie. */
@@ -102,6 +129,10 @@ export async function handle(request, env, fetchImpl = fetch) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(allowed) });
   if (request.method !== 'POST') return json(405, { error: 'method_not_allowed' }, allowed);
   if (!env.ANTHROPIC_API_KEY) return json(503, { error: 'not_configured' }, allowed);
+
+  const access = checkAccess(request, env);
+  if (access === 'missing_config') return json(503, { error: 'not_configured' }, allowed);
+  if (access === 'denied') return json(401, { error: 'unauthorized' }, allowed);
 
   if (env.LIMITER) {
     const key = request.headers.get('CF-Connecting-IP') || 'unknown';

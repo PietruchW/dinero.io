@@ -50,24 +50,26 @@ export function applyAIResults(state, results) {
 }
 
 const ERRORS = {
+  401: 'Nieprawidłowy kod dostępu do AI. Sprawdź go w Ustawieniach.',
   403: 'Pośrednik AI odrzucił zapytanie (zły adres aplikacji).',
   429: 'Za dużo zapytań do AI. Spróbuj za minutę.',
-  503: 'Pośrednik AI nie ma jeszcze ustawionego klucza.'
+  503: 'Pośrednik AI nie jest jeszcze skonfigurowany (klucz lub kody dostępu).'
 };
 
 /**
  * Pyta pośrednika o kategorie.
  * @param {string} url adres Workera
  * @param {{id: string, name: string, amount: number}[]} items
+ * @param {string} token kod dostępu z Ustawień
  */
-export async function requestCategories(url, items, fetchImpl = fetch, timeoutMs = 30000) {
+export async function requestCategories(url, items, token, fetchImpl = fetch, timeoutMs = 30000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
     res = await fetchImpl(`${url.replace(/\/$/, '')}/categorize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ items }),
       signal: controller.signal
     });
@@ -79,4 +81,13 @@ export async function requestCategories(url, items, fetchImpl = fetch, timeoutMs
   if (!res.ok) throw new Error(ERRORS[res.status] ?? 'AI chwilowo nie odpowiada. Spróbuj później.');
   const data = await res.json();
   return Array.isArray(data.results) ? data.results : [];
+}
+
+/** Nowy losowy kod dostępu (ok. 144 bity losowości). */
+export function generateAccessCode(cryptoImpl = globalThis.crypto) {
+  const bytes = new Uint8Array(18);
+  cryptoImpl.getRandomValues(bytes);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `dn-${btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
 }
