@@ -5,7 +5,7 @@ import { readStatement } from '../src/importer.js';
 import { categorize, merchantKey } from '../src/categorize.js';
 import {
   emptyState, mergeTransactions, setCategory, monthSummary, months,
-  loadState, saveState, exportBackup, importBackup, STORAGE_KEY
+  loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize
 } from '../src/store.js';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -101,4 +101,53 @@ test('kopia zapasowa: eksport, import i odrzucenie obcego pliku', () => {
   assert.equal(restored.transactions.length, 9);
   assert.throws(() => importBackup('{"app":"inna"}'));
   assert.throws(() => importBackup('{"app":"dinero","version":1,"transactions":[{"id":1}]}'));
+});
+
+test('przelewy własne: rozpoznanie po opisie i po imieniu i nazwisku', async () => {
+  const { isOwner } = await import('../src/categorize.js');
+  assert.equal(categorize({ name: 'Anna Nowak', title: 'Przelew własny', amount: -500 }).category, 'Przelewy własne');
+  assert.equal(categorize({ name: 'X', title: 'Przelew wewnętrzny', amount: 300 }).category, 'Przelewy własne');
+  assert.equal(isOwner('NOWAK ANNA MARIA UL. DŁUGA 1', ['Anna Nowak']), true);
+  assert.equal(isOwner('Firma Anny Nowak', ['Anna Nowak']), false);
+  assert.equal(isOwner('Anna Kowalska', ['Anna Nowak']), false);
+  // Samo imię to za mało – zbyt łatwo o pomyłkę.
+  assert.equal(isOwner('Anna', ['Anna']), false);
+  const owner = categorize({ name: 'ANNA NOWAK', title: 'Przelew wychodzący', amount: -1000 }, {}, ['Anna Nowak']);
+  assert.equal(owner.category, 'Przelewy własne');
+  assert.equal(owner.needsReview, false);
+});
+
+test('przelewy własne nie liczą się do wydatków ani wpływów', () => {
+  const tx = [
+    { id: 'a', date: '2026-11-10', amount: -100, name: 'Lidl', title: '' },
+    { id: 'b', date: '2026-11-11', amount: -5000, name: 'Anna Nowak', title: 'Przelew wychodzący' },
+    { id: 'c', date: '2026-11-11', amount: 5000, name: 'Anna Nowak', title: 'Przelew przychodzący' },
+    { id: 'd', date: '2026-11-12', amount: 4000, name: 'Pracodawca SA', title: 'Wynagrodzenie' }
+  ];
+  let { state } = mergeTransactions(emptyState(), tx);
+  assert.equal(monthSummary(state, '2026-11').spent, 5100);
+  state = setOwnerNames(state, [' Anna Nowak ', '', 'Anna Nowak']);
+  assert.deepEqual(state.settings.ownerNames, ['Anna Nowak']);
+  const s = monthSummary(state, '2026-11');
+  assert.equal(s.spent, 100);
+  assert.equal(s.income, 4000);
+  assert.equal(s.neutral, 10000);
+});
+
+test('ponowne przeliczenie kategorii nie rusza ręcznych wyborów', () => {
+  const tx = [{ id: 'b', date: '2026-11-11', amount: -50, name: 'Anna Nowak', title: '' }];
+  let { state } = mergeTransactions(emptyState(), tx);
+  state = setCategory(state, 'b', 'Wyjścia', false);
+  state = setOwnerNames(state, ['Anna Nowak']);
+  assert.equal(state.transactions[0].category, 'Wyjścia');
+  assert.equal(recategorize(state).transactions[0].category, 'Wyjścia');
+});
+
+test('zapis z poprzedniej wersji (bez ustawień) wczytuje się bez utraty danych', () => {
+  const old = { version: 1, transactions: [{ id: 'x', date: '2026-10-01', amount: -5, name: 'Lidl', title: '',
+    currency: 'PLN', category: 'Jedzenie', needsReview: false, manual: false }], rules: {}, budgets: {}, goals: [] };
+  const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify(old) });
+  const loaded = loadState(storage);
+  assert.equal(loaded.transactions.length, 1);
+  assert.deepEqual(loaded.settings, { ownerNames: [] });
 });

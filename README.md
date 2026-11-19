@@ -19,7 +19,9 @@ i zapisywane tylko w jej pamięci. Nic nie trafia na żaden serwer.
    Ten sam okres możesz wczytać ponownie – duplikaty są pomijane.
 3. W **Transakcjach** popraw kategorie. Z włączonym „Zapamiętuj kategorię dla sklepu”
    kolejne zakupy w tym sklepie trafią do tej kategorii same.
-4. Raz w miesiącu: **Kopia** → **Zapisz kopię** (do Plików lub iCloud).
+4. W **Ustawieniach** wpisz swoje imię i nazwisko jak w banku – przelewy między Twoimi
+   kontami przestaną liczyć się jako wydatki.
+5. Raz w miesiącu: **Ustawienia** → **Zapisz kopię** (do Plików lub iCloud).
 
 ## Dla deweloperów
 

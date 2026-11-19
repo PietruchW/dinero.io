@@ -24,7 +24,8 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
 - `src/csv.js` – kodowanie (UTF-8 / Windows-1250), separator, parser CSV.
 - `src/detect.js` – wiersz nagłówka, kolumny, kwoty, daty, identyfikatory transakcji.
 - `src/importer.js` – `readStatement(bytes, mapping?)`: jedno wejście do importu.
-- `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”.
+- `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”,
+  przelewy własne (po opisie lub imieniu i nazwisku właścicielki; nie liczą się do sum).
 - `src/store.js` – stan, zapis, scalanie importów bez duplikatów, podsumowania, kopia zapasowa.
 - `src/app.js` – UI (renderowanie stringów + delegacja zdarzeń). Jedyny plik z DOM.
 - `sw.js` – service worker, „najpierw sieć”, offline z pamięci podręcznej.
@@ -35,6 +36,9 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 ## Workflow
 
 - Gałąź → PR → zielone CI → przegląd → squash-merge do `main`. Bez pushy do `main`.
+- **Nic nie trafia na GitHub bez wyraźnego „scalaj i pushuj” od właściciela repo** –
+  ani push gałęzi, ani otwarcie PR, ani scalenie. Do tego czasu zmiany zostają lokalnie
+  (commit na gałęzi) i są opisane w rozmowie.
 - `npm test` (Node ≥ 20, wbudowany `node:test`, zero zależności) musi przechodzić.
 - Zmiana UI: sprawdź w przeglądarce w widoku 390×844 przed PR.
 - Wszystko po polsku: interfejs, komunikaty, komentarze w kodzie.
