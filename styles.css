@@ -161,3 +161,16 @@ select {
   height: 48px; width: 100%; border-radius: 14px; border: 1px solid #E4E1DB;
   background: var(--bg); padding: 0 14px; font: inherit; font-size: 16px; color: var(--ink);
 }
+
+/* Na iPhonie (aplikacja z ekranu początkowego) przewijana treść wchodziła
+   pod zegar i ikony baterii. Pas w kolorze tła zasłania obszar paska statusu. */
+body::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+  z-index: 10;
+}
