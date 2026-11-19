@@ -2,7 +2,7 @@
 // online zawsze dostajesz najnowszą wersję z GitHub Pages, offline – kopię
 // z pamięci podręcznej. Dane użytkowniczki nie przechodzą przez ten plik.
 
-const CACHE = 'dinero-shell-v3';
+const CACHE = 'dinero-shell-v4';
 const SHELL = [
   './',
   './index.html',
@@ -14,6 +14,8 @@ const SHELL = [
   './src/categorize.js',
   './src/importer.js',
   './src/store.js',
+  './src/ai.js',
+  './src/config.js',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
   './icons/icon-512.png'

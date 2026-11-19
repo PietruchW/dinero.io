@@ -1,0 +1,21 @@
+name = "dinero-ai"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+# Jedyny adres, z którego Worker przyjmuje zapytania (aplikacja na GitHub Pages).
+ALLOWED_ORIGIN = "https://pietruchw.github.io"
+MODEL = "claude-sonnet-5-5"
+
+# Najwyżej 10 zapytań na minutę z jednego adresu IP.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# Klucz API NIE jest tutaj. Ustawiasz go jako sekret:
+#   npx wrangler secret put ANTHROPIC_API_KEY
