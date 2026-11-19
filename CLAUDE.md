@@ -1,0 +1,49 @@
+# Dinero – instrukcje dla Claude
+
+Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Safari
+→ „Do ekranu początkowego”. Hostowana na GitHub Pages z **publicznego** repozytorium.
+
+## Zasady nadrzędne
+
+1. **Prywatność.** Dane finansowe użytkowniczki istnieją tylko w jej przeglądarce
+   (localStorage). Aplikacja nie wysyła ich nigdzie. Nie dodawaj analityki, zewnętrznych
+   fontów, CDN-ów ani żadnych żądań sieciowych bez wyraźnej zgody właściciela repo.
+2. **Repo jest publiczne.** Nigdy nie commituj prawdziwych wyciągów, danych osobowych,
+   kwot, numerów kont ani kluczy API. Pliki testowe w `tests/fixtures/` są syntetyczne
+   i tak ma zostać.
+3. **Dane z plików banku to dane z zewnątrz.** Każdy tekst z CSV przechodzi przez
+   `esc()` przed wstawieniem do HTML. CSP w `index.html` zostaje restrykcyjne
+   (`script-src 'self'`, `connect-src 'self'`).
+4. **Kompatybilność zapisu.** Format w localStorage ma wersję (`STORAGE_KEY = 'dinero.v1'`).
+   Zmiana struktury = nowa wersja + migracja ze starej. Utrata danych użytkowniczki
+   to najgorszy możliwy błąd.
+
+## Architektura
+
+- `index.html`, `styles.css` – powłoka, bez frameworka i bez kroku budowania.
+- `src/csv.js` – kodowanie (UTF-8 / Windows-1250), separator, parser CSV.
+- `src/detect.js` – wiersz nagłówka, kolumny, kwoty, daty, identyfikatory transakcji.
+- `src/importer.js` – `readStatement(bytes, mapping?)`: jedno wejście do importu.
+- `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”.
+- `src/store.js` – stan, zapis, scalanie importów bez duplikatów, podsumowania, kopia zapasowa.
+- `src/app.js` – UI (renderowanie stringów + delegacja zdarzeń). Jedyny plik z DOM.
+- `sw.js` – service worker, „najpierw sieć”, offline z pamięci podręcznej.
+  Nowy plik aplikacji = dopisz go do listy `SHELL`.
+
+Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
+
+## Workflow
+
+- Gałąź → PR → zielone CI → przegląd → squash-merge do `main`. Bez pushy do `main`.
+- `npm test` (Node ≥ 20, wbudowany `node:test`, zero zależności) musi przechodzić.
+- Zmiana UI: sprawdź w przeglądarce w widoku 390×844 przed PR.
+- Wszystko po polsku: interfejs, komunikaty, komentarze w kodzie.
+
+## Plan
+
+1. ✅ Fundament: import CSV, kategorie, zapis lokalny, kopia zapasowa, PWA.
+2. Ekrany wg makiety: limity per kategoria, cele oszczędnościowe, dopracowany wygląd.
+3. AI (opcjonalnie): podpowiedzi kategorii i podsumowanie miesiąca przez pośrednika
+   na Cloudflare Workers. Do AI idą tylko nazwa sklepu i kwota. Klucz API wyłącznie
+   jako sekret w Workerze, nigdy w repo. Aplikacja musi działać bez AI. Wymaga
+   dopisania adresu Workera do `connect-src` w CSP.

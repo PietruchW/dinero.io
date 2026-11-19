@@ -1,0 +1,17 @@
+"Lista transakcji"
+"Dokument nr 0000000/2026"
+"Wygenerowany dnia: 2026-11-01"
+
+"Data transakcji";"Data ksiêgowania";"Dane kontrahenta";"Tytu³";"Nr rachunku";"Nazwa banku";"Szczegó³y";"Nr transakcji";"Kwota transakcji (waluta rachunku)";"Waluta";"Kwota blokady/zwolnienie blokady";"Waluta";"Kwota p³atnoœci w walucie";"Waluta";"Konto";"Saldo po transakcji";"Waluta";;;
+2026-10-31;2026-10-31;"LIDL SP. Z O.O. SP.K. GDAÑSK";"P³atnoœæ kart¹ 31.10.2026 Nr karty 4246xx0000";"";"";"TR.KART";"'202610310001";-86,40;PLN;;;;;"Konto Direct";1 913,60;PLN;;;
+2026-10-31;2026-10-31;"ZALANDO SE";"P³atnoœæ kart¹ 31.10.2026";"";"";"TR.KART";"'202610310002";-189,00;PLN;;;;;"Konto Direct";1 724,60;PLN;;;
+2026-10-30;;"ROSSMANN 123 GDANSK";"P³atnoœæ kart¹ 30.10.2026";"";"";"";"";;;-54,99;PLN;;;"Konto Direct";;;;;
+2026-10-30;2026-10-30;"Kawiarnia Pod Lip¹";"P³atnoœæ kart¹";"";"";"TR.KART";"'202610300003";-14,00;PLN;;;;;"Konto Direct";1 779,59;PLN;;;
+2026-10-30;2026-10-30;"Kawiarnia Pod Lip¹";"P³atnoœæ kart¹";"";"";"TR.KART";"'202610300004";-14,00;PLN;;;;;"Konto Direct";1 765,59;PLN;;;
+2026-10-28;2026-10-28;"PRZYK£ADOWA FIRMA SP. Z O.O.";"Wynagrodzenie 10/2026";"00 0000 0000 0000 0000 0000 0000";"";"PRZELEW";"'202610280005";6 450,00;PLN;;;;;"Konto Direct";1 793,59;PLN;;;
+2026-10-27;2026-10-27;"Anna Nowak";"Przelew na telefon BLIK";"";"";"BLIK";"'202610270006";-50,00;PLN;;;;;"Konto Direct";-4 656,41;PLN;;;
+2026-10-26;2026-10-26;"UBER EATS";"P³atnoœæ kart¹";"";"";"TR.KART";"'202610260007";-62,00;PLN;;;;;"Konto Direct";-4 606,41;PLN;;;
+2026-10-25;2026-10-25;"BOLT.EU";"P³atnoœæ kart¹";"";"";"TR.KART";"'202610250008";-23,50;PLN;;;;;"Konto Direct";-4 544,41;PLN;;;
+2026-10-24;2026-10-24;"ZALANDO SE";"Zwrot towaru";"";"";"TR.KART";"'202610240009";59,90;PLN;;;;;"Konto Direct";-4 520,91;PLN;;;
+
+"Liczba transakcji: 10"
