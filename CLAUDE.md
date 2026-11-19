@@ -36,9 +36,9 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 ## Workflow
 
 - Gałąź → PR → zielone CI → przegląd → squash-merge do `main`. Bez pushy do `main`.
-- **Nic nie trafia na GitHub bez wyraźnego „scalaj i pushuj” od właściciela repo** –
-  ani push gałęzi, ani otwarcie PR, ani scalenie. Do tego czasu zmiany zostają lokalnie
-  (commit na gałęzi) i są opisane w rozmowie.
+- W tym repo Claude sam pushuje gałąź, otwiera PR i scala go (squash) – ale dopiero
+  po zielonym CI i własnym przejrzeniu zmian (decyzja właściciela repo z 19.11.2026).
+  Nadal nigdy nie pushuje bezpośrednio do `main`.
 - `npm test` (Node ≥ 20, wbudowany `node:test`, zero zależności) musi przechodzić.
 - Zmiana UI: sprawdź w przeglądarce w widoku 390×844 przed PR.
 - Wszystko po polsku: interfejs, komunikaty, komentarze w kodzie.
