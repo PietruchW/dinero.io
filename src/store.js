@@ -1,13 +1,13 @@
 // Stan aplikacji i jego zapis. Dane leżą wyłącznie w pamięci przeglądarki
 // na urządzeniu użytkowniczki (localStorage). Nic nie jest wysyłane.
 
-import { categorize, merchantKey, CATEGORIES } from './categorize.js';
+import { categorize, merchantKey, CATEGORIES, NEUTRAL } from './categorize.js';
 
 export const STORAGE_KEY = 'dinero.v1';
 const VERSION = 1;
 
 export function emptyState() {
-  return { version: VERSION, transactions: [], rules: {}, budgets: {}, goals: [] };
+  return { version: VERSION, transactions: [], rules: {}, budgets: {}, goals: [], settings: { ownerNames: [] } };
 }
 
 /**
@@ -43,8 +43,18 @@ function validateState(data) {
     transactions: data.transactions,
     rules: data.rules && typeof data.rules === 'object' ? data.rules : {},
     budgets: data.budgets && typeof data.budgets === 'object' ? data.budgets : {},
-    goals: Array.isArray(data.goals) ? data.goals : []
+    goals: Array.isArray(data.goals) ? data.goals : [],
+    // Pole dodane po pierwszej wersji – stare zapisy go nie mają.
+    settings: {
+      ownerNames: Array.isArray(data.settings?.ownerNames)
+        ? data.settings.ownerNames.filter((n) => typeof n === 'string')
+        : []
+    }
   };
+}
+
+function ownerNames(state) {
+  return state.settings?.ownerNames ?? [];
 }
 
 /**
@@ -62,7 +72,7 @@ export function mergeTransactions(state, incoming) {
       continue;
     }
     known.add(tx.id);
-    const { category, needsReview } = categorize(tx, state.rules);
+    const { category, needsReview } = categorize(tx, state.rules, ownerNames(state));
     fresh.push({ ...tx, category, needsReview, manual: false });
   }
   const transactions = [...state.transactions, ...fresh].sort((a, b) =>
@@ -92,14 +102,41 @@ export function setCategory(state, txId, category, remember = false) {
 }
 
 /**
+ * Ustawia imiona i nazwiska właścicielki kont i na nowo przypisuje kategorie
+ * wszystkim transakcjom poza zmienionymi ręcznie.
+ * @param {string[]} names
+ */
+export function setOwnerNames(state, names) {
+  const clean = [...new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))];
+  const next = { ...state, settings: { ...state.settings, ownerNames: clean } };
+  return recategorize(next);
+}
+
+/** Ponowne przypisanie kategorii (np. po zmianie ustawień); ręczne wybory zostają. */
+export function recategorize(state) {
+  const transactions = state.transactions.map((t) => {
+    if (t.manual) return t;
+    const { category, needsReview } = categorize(t, state.rules, ownerNames(state));
+    return { ...t, category, needsReview };
+  });
+  return { ...state, transactions };
+}
+
+/**
  * Podsumowanie miesiąca ("RRRR-MM"): wydatki per kategoria (liczby dodatnie;
- * zwroty pomniejszają kategorię), suma wydatków i przychód.
+ * zwroty pomniejszają kategorię), suma wydatków i przychód. Przelewy własne
+ * nie liczą się ani do wydatków, ani do wpływów (osobno w `neutral`).
  */
 export function monthSummary(state, month) {
   const byCategory = {};
   let income = 0;
+  let neutral = 0;
   for (const t of state.transactions) {
     if (!t.date.startsWith(month)) continue;
+    if (NEUTRAL.has(t.category)) {
+      neutral += Math.abs(t.amount);
+      continue;
+    }
     if (t.category === 'Przychód') {
       income += t.amount;
       continue;
@@ -108,7 +145,7 @@ export function monthSummary(state, month) {
   }
   for (const k of Object.keys(byCategory)) byCategory[k] = Math.round(byCategory[k] * 100) / 100;
   const spent = Math.round(Object.values(byCategory).reduce((a, b) => a + b, 0) * 100) / 100;
-  return { month, byCategory, spent, income: Math.round(income * 100) / 100 };
+  return { month, byCategory, spent, income: Math.round(income * 100) / 100, neutral: Math.round(neutral * 100) / 100 };
 }
 
 /** Miesiące z danymi, od najnowszego. */

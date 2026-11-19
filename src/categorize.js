@@ -12,8 +12,17 @@ export const CATEGORIES = [
   'Rachunki',
   'Subskrypcje',
   'Inne',
+  'Przelewy własne',
   'Przychód'
 ];
+
+// Kategorie, które nie są ani wydatkiem, ani wpływem (pieniądze tylko
+// przechodzą między własnymi kontami).
+export const NEUTRAL = new Set(['Przelewy własne']);
+
+// Opisy, którymi banki oznaczają przelew między własnymi rachunkami.
+const OWN_TRANSFER = ['przelew wlasny', 'przelew wewnetrzny', 'przelew miedzy rachunkami', 'przelew miedzy wlasnymi',
+  'przeksiegowanie', 'transfer wlasny'];
 
 // Kolejność ma znaczenie: bardziej szczegółowe wpisy (np. „uber eats”)
 // muszą stać przed ogólnymi („uber”). Słowa po normalizacji (bez ogonków).
@@ -64,17 +73,36 @@ function hasWord(haystack, word) {
 }
 
 /**
+ * Czy kontrahent to właścicielka konta: wszystkie słowa któregoś z podanych
+ * imion i nazwisk występują w nazwie (w dowolnej kolejności, bez ogonków),
+ * np. „Anna Nowak” pasuje do „NOWAK ANNA MARIA UL. …”.
+ * @param {string} name
+ * @param {string[]} ownerNames
+ */
+export function isOwner(name, ownerNames = []) {
+  const words = new Set(normalize(name).split(/[^a-z0-9]+/).filter(Boolean));
+  return ownerNames.some((owner) => {
+    const parts = normalize(owner).split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+    return parts.length >= 2 && parts.every((p) => words.has(p));
+  });
+}
+
+/**
  * Kategoria dla transakcji.
  * @param {{name: string, title?: string, amount: number}} tx
  * @param {Record<string, string>} userRules klucz sklepu → kategoria
- * @returns {{category: string, needsReview: boolean, source: 'user'|'keyword'|'default'}}
+ * @param {string[]} ownerNames imiona i nazwiska właścicielki kont
+ * @returns {{category: string, needsReview: boolean, source: 'user'|'owner'|'keyword'|'default'}}
  */
-export function categorize(tx, userRules = {}) {
+export function categorize(tx, userRules = {}, ownerNames = []) {
   const key = merchantKey(tx.name);
   if (key && userRules[key]) {
     return { category: userRules[key], needsReview: false, source: 'user' };
   }
   const haystack = ` ${normalize(`${tx.name} ${tx.title ?? ''}`)} `;
+  if (isOwner(tx.name, ownerNames) || OWN_TRANSFER.some((w) => hasWord(haystack, w))) {
+    return { category: 'Przelewy własne', needsReview: false, source: 'owner' };
+  }
   for (const [category, words] of KEYWORDS) {
     if (words.some((w) => hasWord(haystack, w))) {
       // Kwota dodatnia u sklepu to zwrot – zostaje w kategorii sklepu.

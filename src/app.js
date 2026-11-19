@@ -5,7 +5,7 @@ import { readStatement } from './importer.js';
 import { CATEGORIES } from './categorize.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
-  exportBackup, importBackup, emptyState
+  exportBackup, importBackup, emptyState, setOwnerNames, recategorize
 } from './store.js';
 
 const COLORS = {
@@ -17,6 +17,7 @@ const COLORS = {
   'Rachunki': '#8C7A3D',
   'Subskrypcje': '#7D6BB3',
   'Inne': '#9A958C',
+  'Przelewy własne': '#B9B4AA',
   'Przychód': '#2F6B57'
 };
 const MONTHS = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września',
@@ -35,7 +36,7 @@ const ui = {
   pending: null, // { bytes, result, fileName }
   message: null
 };
-let state = loadState(window.localStorage);
+let state = recategorize(loadState(window.localStorage));
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -105,6 +106,11 @@ function pulpitView() {
     <span class="big">${esc(money.format(s.spent))}</span>
     <span class="sub">Wpływy: ${esc(money.format(s.income))}</span>
   </section>
+  ${s.neutral ? `<p class="muted">Przelewy między Twoimi kontami (${esc(money.format(s.neutral))}) nie liczą się do wydatków ani wpływów.</p>` : ''}
+  ${state.settings.ownerNames.length ? '' : `<section class="card">
+    <p>Wpisz swoje imię i nazwisko, żeby przelewy między Twoimi kontami nie liczyły się jako wydatki.</p>
+    <button type="button" class="btn secondary" data-action="go" data-view="ustawienia">Przejdź do ustawień</button>
+  </section>`}
   ${review ? `<button type="button" class="badge" data-action="review">${review} do sprawdzenia →</button>` : ''}
   <section class="card">
     <h2>Kategorie</h2>
@@ -211,9 +217,17 @@ function importView() {
 function ustawieniaView() {
   const msg = ui.message ? `<div class="msg ${ui.message.kind}">${esc(ui.message.text)}</div>` : '';
   return `
-  <header><span class="eyebrow">Twoje dane</span><h1>Kopia zapasowa</h1></header>
+  <header><span class="eyebrow">Twoje dane</span><h1>Ustawienia</h1></header>
   ${msg}
   <section class="card">
+    <h2>Twoje konta</h2>
+    <p class="muted">Imię i nazwisko tak, jak widnieje w banku. Przelewy, w których jesteś po obu stronach (np. na konto oszczędnościowe), nie będą liczone jako wydatki. Kilka wariantów oddziel przecinkiem.</p>
+    <label class="visually-hidden" for="owner-names">Imię i nazwisko</label>
+    <input id="owner-names" class="text-input" type="text" autocomplete="name" value="${esc(state.settings.ownerNames.join(', '))}" placeholder="np. Anna Nowak">
+    <button type="button" class="btn" data-action="save-owner">Zapisz</button>
+  </section>
+  <section class="card">
+    <h2>Kopia zapasowa</h2>
     <p>Dane są tylko w tym telefonie. Raz w miesiącu zapisz kopię w Plikach albo na iCloud – jeśli telefon wyczyści dane strony, odtworzysz wszystko z kopii.</p>
     <p class="muted">${state.transactions.length} transakcji · ${Object.keys(state.rules).length} zapamiętanych sklepów</p>
     <button type="button" class="btn" data-action="backup">Zapisz kopię</button>
@@ -277,6 +291,12 @@ app.addEventListener('click', (e) => {
     render();
   }
   if (action === 'backup') saveBackup();
+  if (action === 'save-owner') {
+    const input = document.getElementById('owner-names');
+    state = setOwnerNames(state, input.value.split(','));
+    if (persist()) ui.message = { kind: 'ok', text: 'Zapisano. Kategorie zostały przeliczone.' };
+    render();
+  }
   if (action === 'wipe' && window.confirm('Na pewno usunąć wszystkie dane z tego telefonu?')) {
     state = emptyState();
     persist();

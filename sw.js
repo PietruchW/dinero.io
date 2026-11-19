@@ -2,7 +2,7 @@
 // online zawsze dostajesz najnowszą wersję z GitHub Pages, offline – kopię
 // z pamięci podręcznej. Dane użytkowniczki nie przechodzą przez ten plik.
 
-const CACHE = 'dinero-shell-v1';
+const CACHE = 'dinero-shell-v2';
 const SHELL = [
   './',
   './index.html',
