@@ -1,6 +1,6 @@
 # Dinero
 
-Prosta aplikacja do pilnowania domowego budżetu. Wczytujesz wyciąg z banku (CSV),
+Prosta aplikacja do pilnowania domowego budżetu. Wczytujesz wyciąg z banku (CSV lub Excel .xlsx),
 a aplikacja dzieli wydatki na kategorie i pokazuje, ile poszło w danym miesiącu.
 
 **Wszystko dzieje się na Twoim telefonie.** Wyciągi są czytane w przeglądarce
@@ -14,7 +14,8 @@ i zapisywane tylko w jej pamięci. Nic nie trafia na żaden serwer.
 
 ## Jak używać
 
-1. W banku pobierz historię konta jako **CSV**.
+1. W banku pobierz historię konta jako **CSV** albo **Excel (.xlsx)** – np. BNP Paribas daje tylko Excel.
+   Przy imporcie wpisz nazwę konta (np. „ING”) – przy kilku kontach można potem oglądać każde osobno.
 2. W aplikacji: **Import** → wybierz plik → sprawdź kolumny → **Importuj**.
    Ten sam okres możesz wczytać ponownie – duplikaty są pomijane.
 3. W **Transakcjach** popraw kategorie. Z włączonym „Zapamiętuj kategorię dla sklepu”

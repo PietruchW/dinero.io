@@ -121,7 +121,8 @@ export function findHeaderRow(rows) {
  * Z nagłówkiem – po nazwach; bez nagłówka – po zawartości.
  * @param {string[][]} rows
  * @param {number} headerIndex
- * @returns {{date: number|null, amount: number|null, name: number|null, title: number|null, currency: number|null}}
+ * @returns {{date: number|null, amount: number|null, name: number|null, title: number|null, currency: number|null,
+ *   sender?: number|null, account?: number|null, status?: number|null, type?: number|null}}
  */
 export function detectColumns(rows, headerIndex) {
   if (headerIndex >= 0) {
@@ -139,7 +140,19 @@ export function detectColumns(rows, headerIndex) {
     const currency = amount !== null && normalize(rows[headerIndex][amount + 1]).startsWith('waluta')
       ? amount + 1
       : pick('currency');
-    return { date, amount, name, title, currency };
+    // Kolumny dodatkowe – tylko przy dokładnej nazwie, żeby nie pomylić
+    // np. „Nr rachunku” kontrahenta z własnym kontem.
+    const exact = (names) => {
+      const idx = headers.findIndex((h, i) => !used.has(i) && names.includes(h));
+      if (idx === -1) return null;
+      used.add(idx);
+      return idx;
+    };
+    const sender = exact(['nadawca']);
+    const account = exact(['produkt']);
+    const status = exact(['status', 'status transakcji', 'status operacji']);
+    const type = exact(['typ transakcji', 'typ operacji']);
+    return { date, amount, name, title, currency, sender, account, status, type };
   }
   return detectByContent(rows);
 }
@@ -187,30 +200,134 @@ export function hash(text) {
   return h.toString(36);
 }
 
+// Numer karty zamaskowany przez bank („123456------1234”) i numer rachunku
+// (26 cyfr, z „PL” lub bez, ze spacjami lub bez).
+const CARD_NUMBER = /\b\d{4,6}[-*xX•]{4,}\d{4}\b/g;
+const ACCOUNT_NUMBER = /\b(?:[A-Z]{2})?\d{2}(?: ?\d{4}){6}\b/g;
+
+/** Usuwa z tekstu numery kart i rachunków – nie są potrzebne i nie powinny trafić do AI. */
+export function scrubNumbers(text) {
+  return String(text ?? '')
+    .replace(CARD_NUMBER, ' ')
+    .replace(ACCOUNT_NUMBER, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+function lines(text) {
+  return String(text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
+
 /**
- * Buduje listę transakcji z wierszy i mapowania kolumn. Pomija wiersze
- * bez poprawnej daty lub kwoty (np. stopki, blokady bez kwoty).
- * Identyczne transakcje z tego samego dnia dostają kolejne numery,
- * więc dwie takie same kawy nie zleją się w jedną, a ponowny import
- * tego samego pliku nie zdubluje danych.
- * @returns {{date: string, amount: number, name: string, title: string, currency: string, id: string}[]}
+ * Nazwa kontrahenta z pola, w którym bank trzyma numer konta, nazwę i adres
+ * w osobnych liniach (np. BNP). Bierzemy pierwszą linię, która nie jest numerem.
  */
-export function toTransactions(rows, headerIndex, mapping) {
+export function cleanParty(text) {
+  for (const line of lines(text)) {
+    const clean = scrubNumbers(line);
+    if (clean) return clean;
+  }
+  return '';
+}
+
+/**
+ * Czytelna nazwa konta z kolumny „Produkt”: nazwa produktu i 4 ostatnie
+ * cyfry numeru, np. „Konto Osobiste •1234”. Pełny numer nie jest zapisywany.
+ */
+export function accountLabel(text) {
+  let name = '';
+  let last4 = '';
+  for (const line of lines(text)) {
+    const digits = line.replace(/\s/g, '');
+    if (/^(?:[A-Z]{2})?\d{10,34}$/i.test(digits)) {
+      if (!last4) last4 = digits.slice(-4);
+    } else if (!name) {
+      name = scrubNumbers(line);
+    }
+  }
+  if (name && last4) return `${name} •${last4}`;
+  return name || (last4 ? `Rachunek •${last4}` : '');
+}
+
+// Opis płatności kartą w BNP: numer karty, pole 20 znaków z nazwiskiem
+// posiadacza, miasto, sklep, kraj, kwota, waluta i data, np.
+// „123456------7890 JAN KOWALSKI         Gdansk LIDL WARSZAWSKA POL 114,46 PLN 2026-11-14”.
+const CARD_DESC = /^(?:\d{4,6}[-*xX•]{4,}\d{4}|\d{4}-\d{2}-\d{2}) (.{20}) (.+?)(?: [A-Z]{3} -?[\d.,]+ [A-Z]{3} \d{4}-\d{2}-\d{2})?$/;
+
+/**
+ * Nazwa sklepu z opisu płatności kartą (bez numeru karty, nazwiska
+ * posiadacza, miasta i kwoty). null, gdy opis ma inny układ.
+ */
+export function cardMerchant(text) {
+  const m = String(text ?? '').trim().match(CARD_DESC);
+  if (!m) return null;
+  const words = m[2].trim().split(/\s+/);
+  // Pierwsze słowo to miasto – zostawiamy je tylko, gdy nic poza nim nie ma.
+  return scrubNumbers(words.length > 1 ? words.slice(1).join(' ') : words[0]);
+}
+
+// Operacje samego banku: jako „kontrahenta” bierzemy typ operacji, żeby
+// odsetki, prowizje i raty nie zlały się w jeden „sklep” o nazwie banku.
+const BANK_TYPES = /^(odsetki|prowizj|oplat|operacja kredytowa)/;
+
+// Statusy operacji, które nie zmieniły salda.
+const SKIPPED_STATUS = /odrzuc|anulow|niezrealiz|odmow/;
+
+/**
+ * Zamienia wiersze wyciągu na transakcje. Pomija wiersze bez daty lub kwoty,
+ * z kwotą 0 i operacje odrzucone. Identyfikator liczony z daty, kwoty,
+ * kontrahenta, tytułu i konta – ten sam plik wczytany drugi raz da te same ID.
+ * @param {string[][]} rows
+ * @param {number} headerIndex
+ * @param {object} mapping
+ * @param {{label?: string}} [options] nazwa konta wpisana przy imporcie
+ */
+export function toTransactions(rows, headerIndex, mapping, options = {}) {
   if (mapping.date == null || mapping.amount == null) return [];
+  const label = String(options.label ?? '').trim().slice(0, 40);
   const seen = new Map();
+  const seenLegacy = new Map();
   const out = [];
+  const cell = (r, key) => (mapping[key] != null ? r[mapping[key]] ?? '' : '');
   for (let i = headerIndex + 1; i < rows.length; i += 1) {
     const r = rows[i];
     const date = parseDate(r[mapping.date]);
     const amount = parseAmount(r[mapping.amount]);
     if (date === null || amount === null || amount === 0) continue;
-    const name = (mapping.name != null ? r[mapping.name] : '') || '';
-    const title = (mapping.title != null ? r[mapping.title] : '') || '';
-    const currency = (mapping.currency != null ? r[mapping.currency] : '') || 'PLN';
-    const base = `${date}|${amount.toFixed(2)}|${normalize(name)}|${normalize(title)}`;
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    out.push({ id: hash(`${base}#${n}`), date, amount, name: name || title, title: name ? title : '', currency });
+    if (mapping.status != null && SKIPPED_STATUS.test(normalize(cell(r, 'status')))) continue;
+    // Przy wpływie kontrahentem jest nadawca, przy wydatku – odbiorca.
+    const rawName = amount > 0 && mapping.sender != null && cell(r, 'sender') ? cell(r, 'sender') : cell(r, 'name');
+    const rawTitle = cell(r, 'title');
+    const currency = cell(r, 'currency') || 'PLN';
+    // ID z surowych danych – tak jak w poprzednich wersjach, żeby ponowny
+    // import starego pliku nie zrobił duplikatów.
+    const base = `${date}|${amount.toFixed(2)}|${normalize(rawName)}|${normalize(rawTitle)}`;
+    const product = accountLabel(cell(r, 'account'));
+    const account = [label, product].filter(Boolean).join(' · ');
+    // Z kolumny „Produkt” klucz konta jest stały; bez niej – nazwa z importu.
+    const accountKey = product ? normalize(product) : normalize(label);
+    const key = accountKey ? `${accountKey}|${base}` : base;
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    let name = cleanParty(rawName);
+    let title = lines(rawTitle).map(scrubNumbers).filter(Boolean).join(' ');
+    const type = String(cell(r, 'type')).trim();
+    const card = cardMerchant(lines(rawTitle)[0]);
+    if (type && BANK_TYPES.test(normalize(type))) {
+      name = type;
+    } else if (!name && card) {
+      name = card;
+      title = '';
+    }
+    const tx = { id: hash(`${key}#${n}`), date, amount, name: name || title, title: name ? title : '', currency };
+    if (account) tx.account = account;
+    if (accountKey) {
+      // Identyfikator, jaki ta transakcja miała przed dodaniem kont.
+      const m = (seenLegacy.get(base) ?? 0) + 1;
+      seenLegacy.set(base, m);
+      tx.legacyId = hash(`${base}#${m}`);
+    }
+    out.push(tx);
   }
   return out;
 }

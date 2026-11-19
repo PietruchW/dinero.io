@@ -75,14 +75,23 @@ function ownerNames(state) {
 /**
  * Dokłada transakcje z importu. Te, które już są (ten sam identyfikator),
  * pomija – można bezpiecznie wczytać zachodzące na siebie wyciągi.
+ * Transakcja wczytana wcześniej bez konta (stary identyfikator) też jest
+ * duplikatem – dostaje wtedy tylko nazwę konta.
  * @returns {{state: object, added: number, duplicates: number}}
  */
 export function mergeTransactions(state, incoming) {
   const known = new Set(state.transactions.map((t) => t.id));
+  const legacy = new Map(state.transactions.filter((t) => !t.account).map((t) => [t.id, t]));
+  const adopt = new Map();
   const fresh = [];
   let duplicates = 0;
-  for (const tx of incoming) {
+  for (const { legacyId, ...tx } of incoming) {
     if (known.has(tx.id)) {
+      duplicates += 1;
+      continue;
+    }
+    if (legacyId && legacy.has(legacyId) && !adopt.has(legacyId)) {
+      adopt.set(legacyId, tx.account);
       duplicates += 1;
       continue;
     }
@@ -90,10 +99,27 @@ export function mergeTransactions(state, incoming) {
     const { category, needsReview, source } = categorize(tx, state.rules, ownerNames(state), state.aiRules);
     fresh.push({ ...tx, category, needsReview, source, manual: false });
   }
-  const transactions = [...state.transactions, ...fresh].sort((a, b) =>
+  const existing = adopt.size
+    ? state.transactions.map((t) => (adopt.has(t.id) && adopt.get(t.id) ? { ...t, account: adopt.get(t.id) } : t))
+    : state.transactions;
+  const transactions = [...existing, ...fresh].sort((a, b) =>
     a.date === b.date ? 0 : a.date < b.date ? 1 : -1
   );
   return { state: { ...state, transactions }, added: fresh.length, duplicates };
+}
+
+/** Nazwy kont występujące w danych, alfabetycznie. */
+export function accounts(state) {
+  return [...new Set(state.transactions.map((t) => t.account).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pl'));
+}
+
+/**
+ * Widok stanu ograniczony do jednego konta (null = wszystkie). Tylko do
+ * wyświetlania – nie zapisywać wyniku.
+ */
+export function forAccount(state, account) {
+  if (!account) return state;
+  return { ...state, transactions: state.transactions.filter((t) => t.account === account) };
 }
 
 /**

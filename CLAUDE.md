@@ -10,7 +10,8 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
    fontów, CDN-ów ani żadnych żądań sieciowych bez wyraźnej zgody właściciela repo.
 2. **Repo jest publiczne.** Nigdy nie commituj prawdziwych wyciągów, danych osobowych,
    kwot, numerów kont ani kluczy API. Pliki testowe w `tests/fixtures/` są syntetyczne
-   i tak ma zostać.
+   i tak ma zostać (`bnp-like.xlsx` jest generowany skryptem ze zmyślonymi danymi).
+   `.gitignore` blokuje `*.csv`, `*.xlsx`, `*.xls` poza `tests/fixtures/`.
 3. **Dane z plików banku to dane z zewnątrz.** Każdy tekst z CSV przechodzi przez
    `esc()` przed wstawieniem do HTML. CSP w `index.html` zostaje restrykcyjne
    (`script-src 'self'`, `connect-src 'self'`).
@@ -22,11 +23,18 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
 
 - `index.html`, `styles.css` – powłoka, bez frameworka i bez kroku budowania.
 - `src/csv.js` – kodowanie (UTF-8 / Windows-1250), separator, parser CSV.
+- `src/xlsx.js` – czytnik Excela .xlsx bez bibliotek (ZIP + `DecompressionStream`), pierwszy arkusz.
+  Stary binarny .xls nieobsługiwany – komunikat „zapisz jako .xlsx”.
 - `src/detect.js` – wiersz nagłówka, kolumny, kwoty, daty, identyfikatory transakcji.
-- `src/importer.js` – `readStatement(bytes, mapping?)`: jedno wejście do importu.
+  Wycina numery kont i kart z nazw i tytułów; opis karty BNP → sam sklep.
+  ID z surowych danych (`data|kwota|kontrahent|tytuł`, plus klucz konta, gdy jest) –
+  bez konta ID musi zostać takie jak dotąd (test z zapisanymi ID).
+- `src/importer.js` – `readFile(bytes, label?)` (CSV lub .xlsx), `analyzeRows` przy zmianie mapowania
+  lub nazwy konta. Konto: nazwa wpisana przy imporcie i/lub kolumna „Produkt”.
 - `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”,
   przelewy własne (po opisie lub imieniu i nazwisku właścicielki; nie liczą się do sum).
-- `src/store.js` – stan, zapis, scalanie importów bez duplikatów, podsumowania, kopia zapasowa.
+- `src/store.js` – stan, zapis, scalanie importów bez duplikatów (także po starym ID sprzed kont –
+  wtedy tylko dopisuje konto), filtr kont, podsumowania, kopia zapasowa.
 - `src/app.js` – UI (renderowanie stringów + delegacja zdarzeń). Jedyny plik z DOM.
 - `src/ai.js`, `src/config.js` – podpowiedzi kategorii z AI (opcjonalne, domyślnie wyłączone);
   `AI_URL` pusty = funkcja ukryta. Wyniki zapisywane jako reguły per sklep (`aiRules`).

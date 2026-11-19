@@ -176,6 +176,10 @@ body::before {
 }
 
 .ai-tag { color: var(--accent); font-size: 12px; font-weight: 600; }
+.tx-account { color: var(--muted); font-size: 12px; }
+
+.field.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+.account-filter select { max-width: none; width: 100%; background: var(--card); }
 
 .tabbar button[hidden] { display: none; }
 

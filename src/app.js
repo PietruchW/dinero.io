@@ -1,11 +1,12 @@
 // Interfejs aplikacji. Każdy tekst z pliku banku przechodzi przez esc(),
 // bo nazwy kontrahentów to dane z zewnątrz i nie mogą trafić do HTML wprost.
 
-import { readStatement } from './importer.js';
+import { readFile, analyzeRows } from './importer.js';
 import { CATEGORIES } from './categorize.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
-  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings
+  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings,
+  accounts, forAccount
 } from './store.js';
 import { AI_URL } from './config.js';
 import {
@@ -21,6 +22,7 @@ const COLORS = {
   'Podróże': '#2F7FA6',
   'Kosmetyki i zdrowie': '#C57B6A',
   'Rachunki': '#8C7A3D',
+  'Długi': '#A8483A',
   'Subskrypcje': '#7D6BB3',
   'Inne': '#9A958C',
   'Przelewy własne': '#B9B4AA',
@@ -37,9 +39,10 @@ const app = document.getElementById('app');
 const ui = {
   view: 'pulpit',
   month: null,
+  account: null, // null = wszystkie konta
   rememberRules: true,
   onlyReview: false,
-  pending: null, // { bytes, result, fileName }
+  pending: null, // { result, fileName }
   message: null,
   aiBusy: false,
   chat: loadChat(window.localStorage),
@@ -159,10 +162,25 @@ function monthNav() {
   </div>`;
 }
 
+/** Wybór konta – widoczny dopiero, gdy w danych są co najmniej dwa konta. */
+function accountFilter() {
+  const list = accounts(state);
+  if (list.length < 2) {
+    ui.account = null;
+    return '';
+  }
+  if (ui.account && !list.includes(ui.account)) ui.account = null;
+  const opts = list.map((a) => `<option value="${esc(a)}" ${a === ui.account ? 'selected' : ''}>${esc(a)}</option>`);
+  return `<label class="field account-filter"><span class="visually-hidden">Konto</span>
+    <select data-action="account">
+      <option value="" ${ui.account ? '' : 'selected'}>Wszystkie konta</option>${opts.join('')}
+    </select></label>`;
+}
+
 function emptyView() {
   return `<div class="card empty">
     <h2>Zacznij od wczytania wyciągu</h2>
-    <p class="muted">Pobierz historię konta jako plik CSV z aplikacji lub strony banku i wczytaj ją tutaj.</p>
+    <p class="muted">Pobierz historię konta jako plik CSV lub Excel z aplikacji lub strony banku i wczytaj ją tutaj.</p>
     <button type="button" class="btn" data-action="go" data-view="import">Wczytaj wyciąg</button>
   </div>`;
 }
@@ -170,8 +188,10 @@ function emptyView() {
 function pulpitView() {
   const month = currentMonth();
   if (!month) return `<header><span class="eyebrow">Dinero</span><h1>Pulpit</h1></header>${emptyView()}`;
-  const s = monthSummary(state, month);
-  const review = state.transactions.filter((t) => t.date.startsWith(month) && t.needsReview).length;
+  const filter = accountFilter();
+  const view = forAccount(state, ui.account);
+  const s = monthSummary(view, month);
+  const review = view.transactions.filter((t) => t.date.startsWith(month) && t.needsReview).length;
   const cats = Object.entries(s.byCategory).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const max = cats.length ? cats[0][1] : 1;
   return `
@@ -179,6 +199,7 @@ function pulpitView() {
     <div><span class="eyebrow">Wydatki</span><h1>${esc(monthLabel(month))}</h1></div>
     ${monthNav()}
   </header>
+  ${filter}
   <section class="hero">
     <span class="label">Wydałaś w tym miesiącu</span>
     <span class="big">${esc(money.format(s.spent))}</span>
@@ -214,7 +235,10 @@ function categorySelect(tx) {
 function transakcjeView() {
   const month = currentMonth();
   if (!month) return `<header><h1>Transakcje</h1></header>${emptyView()}`;
-  const list = state.transactions.filter((t) => t.date.startsWith(month) && (!ui.onlyReview || t.needsReview));
+  const filter = accountFilter();
+  const showAccount = !ui.account && accounts(state).length > 1;
+  const list = forAccount(state, ui.account).transactions
+    .filter((t) => t.date.startsWith(month) && (!ui.onlyReview || t.needsReview));
   const byDay = new Map();
   for (const t of list) {
     if (!byDay.has(t.date)) byDay.set(t.date, []);
@@ -227,6 +251,7 @@ function transakcjeView() {
         <div class="tx">
           <div class="tx-main">
             <span class="tx-name">${esc(t.name || '(bez nazwy)')}</span>
+            ${showAccount && t.account ? `<span class="tx-account">${esc(t.account)}</span>` : ''}
             ${categorySelect(t)}
             ${t.needsReview ? '<span class="review">Do sprawdzenia</span>' : ''}
             ${t.source === 'ai' && !t.needsReview ? '<span class="ai-tag">Przypisane przez AI</span>' : ''}
@@ -241,6 +266,7 @@ function transakcjeView() {
     <div><span class="eyebrow">Transakcje</span><h1>${esc(monthLabel(month))}</h1></div>
     ${monthNav()}
   </header>
+  ${filter}
   ${ui.message ? `<div class="msg ${ui.message.kind}">${esc(ui.message.text)}</div>` : ''}
   ${aiReady() && (selectForAI(state).length || ui.aiBusy) ? `<button type="button" class="btn" data-action="ai" ${ui.aiBusy ? 'disabled' : ''}>
     ${ui.aiBusy ? 'AI przypisuje kategorie…' : `Przypisz kategorie z AI (${selectForAI(state).length})`}</button>` : ''}
@@ -269,10 +295,18 @@ function importView() {
     const r = p.result;
     const preview = r.transactions.slice(0, 5).map((t) => `
       <tr><td>${esc(t.date)}</td><td>${esc(t.name)}</td><td>${esc(money.format(t.amount))}</td></tr>`).join('');
+    const known = accounts(state).map((a) => `<option value="${esc(a)}"></option>`).join('');
     details = `
     <section class="card">
       <div><h2>${esc(p.fileName)}</h2>
-      <p class="muted">${r.transactions.length} transakcji · kodowanie ${esc(r.encoding)}</p></div>
+      <p class="muted">${r.transactions.length} transakcji · ${r.encoding === 'Excel' ? 'plik Excel' : `kodowanie ${esc(r.encoding)}`}</p></div>
+      <label class="field stacked">Nazwa konta (np. „ING”, „Konto wspólne”)
+        <input id="import-label" class="text-input" type="text" maxlength="40" autocomplete="off" list="known-accounts"
+          data-action="import-label" value="${esc(r.label)}" placeholder="${r.accounts.length ? 'opcjonalnie' : 'np. ING'}">
+        <datalist id="known-accounts">${known}</datalist>
+      </label>
+      <p class="muted">Przy kolejnych wyciągach z tego konta wpisuj tę samą nazwę – wtedy wydatki można oglądać osobno dla każdego konta.</p>
+      ${r.accounts.length ? `<p class="muted">Konta w pliku: ${r.accounts.map(esc).join(', ')}</p>` : ''}
       ${mappingField('date', 'Data', r, false)}
       ${mappingField('amount', 'Kwota', r, false)}
       ${mappingField('name', 'Kontrahent', r, true)}
@@ -290,9 +324,10 @@ function importView() {
   </div>
   ${msg}
   <label class="drop">
-    <strong>Wybierz plik CSV</strong>
+    <strong>Wybierz plik CSV lub Excel</strong>
     <span class="muted">Historia konta pobrana z aplikacji lub strony banku</span>
-    <input class="visually-hidden" type="file" accept=".csv,text/csv" data-action="file">
+    <input class="visually-hidden" type="file" data-action="file"
+      accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
   </label>
   ${details}`;
 }
@@ -420,6 +455,7 @@ app.addEventListener('click', (e) => {
     }
     ui.pending = null;
     ui.month = null;
+    ui.account = null;
     render();
     if (aiReady()) runAI();
   }
@@ -453,6 +489,7 @@ app.addEventListener('click', (e) => {
   }
   if (action === 'wipe' && window.confirm('Na pewno usunąć wszystkie dane z tego telefonu?')) {
     state = emptyState();
+    ui.account = null;
     ui.chat = [];
     saveChat(window.localStorage, ui.chat);
     persist();
@@ -486,21 +523,35 @@ app.addEventListener('change', async (e) => {
     ui.onlyReview = el.checked;
     render();
   }
+  if (action === 'account') {
+    ui.account = el.value || null;
+    render();
+  }
+  if (action === 'import-label' && ui.pending) {
+    const r = ui.pending.result;
+    ui.pending.result = analyzeRows(r.rows, r.mapping, { encoding: r.encoding, delimiter: r.delimiter, label: el.value });
+    render();
+  }
   if (action === 'file' && el.files[0]) {
     const file = el.files[0];
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      ui.pending = { bytes, fileName: file.name, result: readStatement(bytes) };
+      ui.pending = { fileName: file.name, result: await readFile(bytes) };
       ui.message = null;
-    } catch {
+    } catch (err) {
       ui.pending = null;
-      ui.message = { kind: 'err', text: 'Nie udało się odczytać pliku. Czy to na pewno CSV z banku?' };
+      const known = err instanceof Error && /\.xls|Excel|przeglądarka|za duży/.test(err.message);
+      ui.message = {
+        kind: 'err',
+        text: known ? err.message : 'Nie udało się odczytać pliku. Czy to na pewno CSV lub Excel z banku?'
+      };
     }
     render();
   }
   if (action === 'map' && ui.pending) {
-    const mapping = { ...ui.pending.result.mapping, [el.dataset.key]: el.value === '' ? null : Number(el.value) };
-    ui.pending.result = readStatement(ui.pending.bytes, mapping);
+    const r = ui.pending.result;
+    const mapping = { ...r.mapping, [el.dataset.key]: el.value === '' ? null : Number(el.value) };
+    ui.pending.result = analyzeRows(r.rows, mapping, { encoding: r.encoding, delimiter: r.delimiter, label: r.label });
     render();
   }
   if (action === 'restore' && el.files[0]) {

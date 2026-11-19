@@ -11,6 +11,7 @@ export const CATEGORIES = [
   'Podróże',
   'Kosmetyki i zdrowie',
   'Rachunki',
+  'Długi',
   'Subskrypcje',
   'Inne',
   'Przelewy własne',
@@ -28,6 +29,12 @@ const OWN_TRANSFER = ['przelew wlasny', 'przelew wewnetrzny', 'przelew miedzy ra
 // Kolejność ma znaczenie: bardziej szczegółowe wpisy (np. „uber eats”)
 // muszą stać przed ogólnymi („uber”). Słowa po normalizacji (bez ogonków).
 const KEYWORDS = [
+  // Pierwsze, bo opis spłaty często zawiera nazwę sklepu („PayPo – Allegro”).
+  ['Długi', ['paypo', 'klarna', 'twisto', 'spingo', 'splata kredytu', 'splata pozyczki', 'splata raty', 'splata karty',
+    'splata zadluzenia', 'splata limitu', 'splata kapitalu', 'rata kredytu', 'rata pozyczki', 'odset', 'prow-kredyt',
+    'provident', 'vivus', 'wonga',
+    'smartney', 'ferratum', 'zaplo', 'netcredit', 'net credit', 'filarum', 'lendon', 'cofidis', 'santander consumer',
+    'inbank', 'kredyt hipoteczny', 'rata hipoteczna']],
   ['Wyjścia', ['uber eats', 'pyszne', 'glovo', 'wolt', 'bolt food', 'mcdonald', 'kfc', 'burger king', 'starbucks',
     'costa coffee', 'restauracja', 'pizz', 'sushi', 'kebab', 'kawiarnia', 'cafe', 'bistro', 'pub ', 'helios',
     'multikino', 'cinema city', 'ebilet']],
@@ -44,7 +51,8 @@ const KEYWORDS = [
   ['Transport', ['orlen', 'bp ', 'shell', 'circle k', 'moya', 'amic', 'lotos', 'bolt', 'uber', 'freenow', 'free now',
     'pkp', 'intercity', 'skm', 'ztm', 'mpk', 'jakdojade', 'parking', 'skycash', 'koleo', 'flixbus']],
   ['Rachunki', ['orange', 'play ', 'p4 sp', 't-mobile', 'plus ', 'polkomtel', 'energa', 'pge', 'tauron', 'enea',
-    'pgnig', 'upc', 'netia', 'vectra', 'czynsz', 'wspolnota', 'spoldzielnia']],
+    'pgnig', 'upc', 'netia', 'vectra', 'czynsz', 'wspolnota', 'spoldzielnia', 'prowizj', 'oplata za prowadzenie',
+    'oplata za karte', 'oplata miesieczna', 'miesieczna oplata', 'oplaty', 'ubezpieczen', 'splata skladki']],
   ['Zakupy', ['allegro', 'zalando', 'amazon', 'h&m', 'zara', 'reserved', 'sinsay', 'mohito', 'pepco', 'action ', 'ikea',
     'jysk', 'ccc', 'decathlon', 'media expert', 'rtv euro', 'mediamarkt', 'shein', 'temu', 'aliexpress', 'vinted',
     'empik', 'smyk', 'tk maxx', 'deichmann', 'leroy', 'castorama', 'obi ']]
@@ -110,6 +118,8 @@ export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
     return { category: 'Przelewy własne', needsReview: false, source: 'owner' };
   }
   for (const [category, words] of KEYWORDS) {
+    // Wpływ z „odsetkami” to zarobek na oszczędnościach, nie dług.
+    if (category === 'Długi' && tx.amount > 0) continue;
     if (words.some((w) => hasWord(haystack, w))) {
       // Kwota dodatnia u sklepu to zwrot – zostaje w kategorii sklepu.
       return { category, needsReview: false, source: 'keyword' };
