@@ -12,6 +12,7 @@ export const CATEGORIES = [
   'Podróże',
   'Kosmetyki i zdrowie',
   'Rachunki',
+  'Długi',
   'Subskrypcje',
   'Inne'
 ];
@@ -28,7 +29,8 @@ Dla każdej pozycji (nazwa sklepu lub firmy i kwota w PLN) wybierz dokładnie je
 - Transport: codzienne dojazdy – paliwo, serwis i części samochodowe, myjnie, parkingi, komunikacja miejska, taksówki
 - Podróże: wyjazdy i urlopy – linie lotnicze, hotele, noclegi, biura podróży, wypożyczalnie aut za granicą
 - Kosmetyki i zdrowie: drogerie, apteki, lekarze, dentysta, fryzjer, kosmetyczka, siłownia
-- Rachunki: prąd, gaz, internet, telefon, czynsz, ubezpieczenia
+- Rachunki: prąd, gaz, internet, telefon, czynsz, ubezpieczenia, opłaty bankowe
+- Długi: spłaty rat, pożyczek, kredytów i kart kredytowych, płatności odroczone (PayPo, Klarna, Twisto), firmy pożyczkowe
 - Subskrypcje: serwisy streamingowe, aplikacje, abonamenty cyfrowe
 - Inne: wszystko pozostałe albo gdy nie masz pewności
 Nie zgaduj na siłę – przy wątpliwości wybierz „Inne”.

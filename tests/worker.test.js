@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handle, validateItems, parseResults } from '../worker/src/index.js';
+import { handle, validateItems, parseResults, CATEGORIES as WORKER_CATEGORIES } from '../worker/src/index.js';
+import { CATEGORIES } from '../src/categorize.js';
 
 const ORIGIN = 'https://pietruchw.github.io';
 const CODE = 'kod-julii-1234567890';
@@ -149,4 +150,9 @@ test('worker /chat: walidacja rozmowy i danych', async () => {
   }
   // Kod dostępu obowiązuje też w czacie.
   assert.equal((await handle(req(chatBody, { path: '/chat', code: null }), env, fakeClaude('x'))).status, 401);
+});
+
+test('worker i aplikacja mają te same kategorie wydatków', () => {
+  const app = CATEGORIES.filter((c) => c !== 'Przychód' && c !== 'Przelewy własne');
+  assert.deepEqual([...WORKER_CATEGORIES].sort(), [...app].sort());
 });

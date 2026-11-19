@@ -4,3 +4,6 @@ node_modules/
 # Prawdziwe wyciągi nigdy nie trafiają do repo.
 *.csv
 !tests/fixtures/*.csv
+*.xlsx
+*.xls
+!tests/fixtures/*.xlsx

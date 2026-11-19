@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readStatement } from '../src/importer.js';
+import { readStatement, readFile } from '../src/importer.js';
 import { categorize, merchantKey } from '../src/categorize.js';
 import {
   emptyState, mergeTransactions, setCategory, monthSummary, months,
-  loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize
+  loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize, accounts, forAccount
 } from '../src/store.js';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -159,4 +159,46 @@ test('kategoria Podróże: linie lotnicze i noclegi, ale nie stacja Lotos', () =
   assert.equal(categorize({ name: 'ETIHADAIR6072417098093', amount: -11081 }).category, 'Podróże');
   assert.equal(categorize({ name: 'LOTOS STACJA 12', amount: -200 }).category, 'Transport');
   assert.equal(categorize({ name: 'Airbnb * HMXYZ', amount: -900 }).category, 'Podróże');
+});
+
+test('kategoria Długi: raty, PayPo, odsetki; wpływ z odsetkami to przychód', () => {
+  const cat = (name, amount, title = '') => categorize({ name, title, amount }).category;
+  assert.equal(cat('PAYPO SP. Z O.O.', -200), 'Długi');
+  assert.equal(cat('Klarna AB', -89.9), 'Długi');
+  assert.equal(cat('PayPo', -50, 'Allegro zamówienie 123'), 'Długi');
+  assert.equal(cat('Bank', -312.4, 'Spłata raty kredytu'), 'Długi');
+  assert.equal(cat('Odsetki', -120), 'Długi');
+  assert.equal(cat('Operacja kredytowa', -1800, 'Kredyt B123 Spłata kapitału wymagalnego'), 'Długi');
+  assert.equal(cat('Odsetki', 1.23), 'Przychód');
+  assert.equal(cat('Prowizje i opłaty', -8), 'Rachunki');
+  // Nazwisko „Ratajczak” to nie rata.
+  assert.equal(cat('Jan Ratajczak', -50), 'Inne');
+});
+
+test('wyciąg z dwóch kont w jednym pliku: przelew między nimi jest neutralny', async () => {
+  const r = await readFile(fixture('bnp-like.xlsx'));
+  const state = mergeTransactions(setOwnerNames(emptyState(), ['Anna Nowak']), r.transactions).state;
+  assert.ok(state.transactions.every((t) => t.legacyId === undefined));
+  const own = state.transactions.filter((t) => t.category === 'Przelewy własne');
+  assert.equal(own.length, 2);
+  assert.deepEqual(accounts(state), ['Konto Osobiste •0001', 'Konto Oszczędnościowe •0002']);
+  const savings = forAccount(state, 'Konto Oszczędnościowe •0002');
+  assert.ok(savings.transactions.every((t) => t.account === 'Konto Oszczędnościowe •0002'));
+  assert.equal(monthSummary(savings, '2026-10').spent, 23.5);
+  assert.equal(forAccount(state, null), state);
+});
+
+test('ponowny import z nazwą konta: bez duplikatów, stare transakcje dostają konto', () => {
+  const before = mergeTransactions(emptyState(), readStatement(fixture('ing-like-cp1250.csv')).transactions).state;
+  const ing = readStatement(fixture('ing-like-cp1250.csv'), undefined, 'ING').transactions;
+  const { state, added, duplicates } = mergeTransactions(before, ing);
+  assert.equal(added, 0);
+  assert.equal(duplicates, ing.length);
+  assert.ok(state.transactions.every((t) => t.account === 'ING'));
+  // Identyfikatory zostają stare – reguły i ręczne kategorie dalej pasują.
+  assert.deepEqual(state.transactions.map((t) => t.id).sort(), before.transactions.map((t) => t.id).sort());
+  // Ten sam plik jako inne konto to nowe transakcje.
+  const other = mergeTransactions(state, readStatement(fixture('ing-like-cp1250.csv'), undefined, 'Wspólne').transactions);
+  assert.equal(other.added, ing.length);
+  assert.deepEqual(accounts(other.state), ['ING', 'Wspólne']);
 });
