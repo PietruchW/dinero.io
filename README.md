@@ -21,7 +21,8 @@ i zapisywane tylko w jej pamięci. Nic nie trafia na żaden serwer.
    kolejne zakupy w tym sklepie trafią do tej kategorii same.
 4. W **Ustawieniach** wpisz swoje imię i nazwisko jak w banku – przelewy między Twoimi
    kontami przestaną liczyć się jako wydatki.
-5. Raz w miesiącu: **Ustawienia** → **Zapisz kopię** (do Plików lub iCloud).
+5. Opcjonalnie: **Czat** – pytania o wydatki do AI (wymaga kodu dostępu w Ustawieniach).
+6. Raz w miesiącu: **Ustawienia** → **Zapisz kopię** (do Plików lub iCloud).
 
 ## Dla deweloperów
 

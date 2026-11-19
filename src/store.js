@@ -9,7 +9,7 @@ const VERSION = 1;
 export function emptyState() {
   return {
     version: VERSION, transactions: [], rules: {}, aiRules: {}, budgets: {}, goals: [],
-    settings: { ownerNames: [], aiEnabled: false, aiToken: '' }
+    settings: { ownerNames: [], aiEnabled: false, aiToken: '', chatEnabled: false, chatMonths: 3 }
   };
 }
 
@@ -54,7 +54,9 @@ function validateState(data) {
         ? data.settings.ownerNames.filter((n) => typeof n === 'string')
         : [],
       aiEnabled: data.settings?.aiEnabled === true,
-      aiToken: typeof data.settings?.aiToken === 'string' ? data.settings.aiToken : ''
+      aiToken: typeof data.settings?.aiToken === 'string' ? data.settings.aiToken : '',
+      chatEnabled: data.settings?.chatEnabled === true,
+      chatMonths: [1, 3, 6, 12].includes(data.settings?.chatMonths) ? data.settings.chatMonths : 3
     }
   };
 }
@@ -128,6 +130,14 @@ export function setOwnerNames(state, names) {
 /** Zapisuje kod dostępu do pośrednika AI (tylko w tym telefonie). */
 export function setAiToken(state, token) {
   return { ...state, settings: { ...state.settings, aiToken: String(token ?? '').trim() } };
+}
+
+/** Ustawienia czatu: włączenie (zgoda) i okres danych wysyłanych do AI. */
+export function setChatSettings(state, { enabled, months }) {
+  const settings = { ...state.settings };
+  if (enabled !== undefined) settings.chatEnabled = enabled === true;
+  if ([1, 3, 6, 12].includes(months)) settings.chatMonths = months;
+  return { ...state, settings };
 }
 
 /** Włącza lub wyłącza podpowiedzi AI. */
