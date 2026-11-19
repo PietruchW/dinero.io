@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+*.log
+# Prawdziwe wyciągi nigdy nie trafiają do repo.
+*.csv
+!tests/fixtures/*.csv
