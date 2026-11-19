@@ -37,6 +37,10 @@ test('worker: poprawne zapytanie zwraca tylko kategorie z listy', async () => {
   assert.equal(calls[0].init.headers['x-api-key'], 'test-key');
   const sent = JSON.parse(calls[0].init.body);
   assert.equal(sent.model, 'test-model');
+  // Nowe modele odrzucają parametry próbkowania.
+  assert.equal(sent.temperature, undefined);
+  assert.equal(sent.top_p, undefined);
+  assert.deepEqual(sent.output_config, { effort: 'low' });
   assert.deepEqual(JSON.parse(sent.messages[0].content), { items });
 });
 
@@ -63,10 +67,14 @@ test('worker: limit zapytań i brak klucza', async () => {
 });
 
 test('worker: błąd API nie wycieka treścią', async () => {
-  const failing = async () => new Response('{"error":{"message":"invalid x-api-key"}}', { status: 401 });
+  const failing = async () =>
+    new Response('{"error":{"type":"authentication_error","message":"invalid x-api-key"}}', { status: 401 });
   const res = await handle(req({ items }), env, failing);
   assert.equal(res.status, 502);
-  assert.deepEqual(await res.json(), { error: 'upstream_error', status: 401 });
+  assert.deepEqual(await res.json(), { error: 'upstream_error', status: 401, type: 'authentication_error' });
+  const notJson = async () => new Response('oops', { status: 500 });
+  assert.deepEqual(await (await handle(req({ items }), env, notJson)).json(),
+    { error: 'upstream_error', status: 500, type: null });
 });
 
 test('validateItems: limity i typy', () => {

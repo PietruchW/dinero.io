@@ -129,8 +129,10 @@ export async function handle(request, env, fetchImpl = fetch) {
       },
       body: JSON.stringify({
         model: env.MODEL || 'claude-sonnet-5-5',
-        max_tokens: 2000,
-        temperature: 0,
+        // Sonnet 5.5 nie przyjmuje temperature/top_p/top_k (błąd 400).
+        // Klasyfikacja nie wymaga głębokiego myślenia – niski „effort” jest szybszy i tańszy.
+        max_tokens: 4000,
+        output_config: { effort: 'low' },
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: JSON.stringify({ items }) }]
       })
@@ -138,7 +140,16 @@ export async function handle(request, env, fetchImpl = fetch) {
   } catch {
     return json(502, { error: 'upstream_unreachable' }, allowed);
   }
-  if (!upstream.ok) return json(502, { error: 'upstream_error', status: upstream.status }, allowed);
+  if (!upstream.ok) {
+    // Do aplikacji idzie tylko kod i typ błędu API – bez treści komunikatu.
+    let type = null;
+    try {
+      type = (await upstream.json())?.error?.type ?? null;
+    } catch {
+      type = null;
+    }
+    return json(502, { error: 'upstream_error', status: upstream.status, type }, allowed);
+  }
   const body = await upstream.json();
   const text = (body.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   return json(200, { results: parseResults(text, items) }, allowed);
