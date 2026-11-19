@@ -184,7 +184,8 @@ function transakcjeView() {
             <span class="tx-name">${esc(t.name || '(bez nazwy)')}</span>
             ${categorySelect(t)}
             ${t.needsReview ? '<span class="review">Do sprawdzenia</span>' : ''}
-            ${t.source === 'ai' ? '<span class="ai-tag">Przypisane przez AI</span>' : ''}
+            ${t.source === 'ai' && !t.needsReview ? '<span class="ai-tag">Przypisane przez AI</span>' : ''}
+            ${t.source === 'ai' && t.needsReview ? '<span class="ai-tag">AI nie rozpoznało – wybierz kategorię</span>' : ''}
           </div>
           <span class="tx-amount ${t.amount > 0 ? 'plus' : ''}">${t.amount > 0 ? '+' : ''}${esc(money.format(t.amount))}</span>
         </div>`).join('')}

@@ -62,3 +62,12 @@ test('requestCategories: poprawna odpowiedź i błędy po polsku', async () => {
   const offline = async () => { throw new TypeError('Failed to fetch'); };
   await assert.rejects(requestCategories('https://ai.example', [], offline), /Brak połączenia/);
 });
+
+test('AI „Inne” zostawia transakcję do sprawdzenia, ale nie wysyła jej ponownie', () => {
+  const { state } = applyAIResults(stateWith(tx), [{ id: 'zdunek mamuszki', category: 'Inne' }]);
+  const z = state.transactions.find((t) => t.id === '1');
+  assert.equal(z.category, 'Inne');
+  assert.equal(z.needsReview, true);
+  assert.equal(z.source, 'ai');
+  assert.deepEqual(selectForAI(state), []);
+});

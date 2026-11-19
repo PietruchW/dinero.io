@@ -111,7 +111,8 @@ export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
     }
   }
   if (key && aiRules[key]) {
-    return { category: aiRules[key], needsReview: false, source: 'ai' };
+    // „Inne” od AI znaczy „nie wiem” – transakcja zostaje do sprawdzenia przez człowieka.
+    return { category: aiRules[key], needsReview: aiRules[key] === 'Inne', source: 'ai' };
   }
   if (tx.amount > 0) return { category: 'Przychód', needsReview: false, source: 'default' };
   return { category: 'Inne', needsReview: true, source: 'default' };
