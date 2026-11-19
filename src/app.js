@@ -5,10 +5,13 @@ import { readStatement } from './importer.js';
 import { CATEGORIES } from './categorize.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
-  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken
+  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings
 } from './store.js';
 import { AI_URL } from './config.js';
-import { selectForAI, applyAIResults, requestCategories, generateAccessCode } from './ai.js';
+import {
+  selectForAI, applyAIResults, requestCategories, generateAccessCode,
+  buildChatContext, requestChat, loadChat, saveChat
+} from './ai.js';
 
 const COLORS = {
   'Jedzenie': '#D08C3E',
@@ -38,8 +41,49 @@ const ui = {
   onlyReview: false,
   pending: null, // { bytes, result, fileName }
   message: null,
-  aiBusy: false
+  aiBusy: false,
+  chat: loadChat(window.localStorage),
+  chatBusy: false,
+  chatError: null
 };
+
+const SUGGESTIONS = [
+  'Na co poszło najwięcej w tym miesiącu?',
+  'Porównaj wydatki z poprzednimi miesiącami',
+  'Gdzie mogę najłatwiej zaoszczędzić?',
+  'Ile wydaję średnio na jedzenie na mieście?'
+];
+
+/** Prosty format odpowiedzi: tekst escapowany, potem tylko **pogrubienie**. */
+function formatReply(text) {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+async function sendChat(text) {
+  const content = text.trim();
+  if (!content || ui.chatBusy) return;
+  ui.chat = [...ui.chat, { role: 'user', content }];
+  ui.chatBusy = true;
+  ui.chatError = null;
+  saveChat(window.localStorage, ui.chat);
+  render();
+  try {
+    const context = buildChatContext(state, state.settings.chatMonths);
+    const reply = await requestChat(AI_URL, state.settings.aiToken, ui.chat, context);
+    ui.chat = [...ui.chat, { role: 'assistant', content: reply }];
+    saveChat(window.localStorage, ui.chat);
+  } catch (err) {
+    // Pytanie bez odpowiedzi wraca do pola tekstowego – rozmowa zostaje spójna.
+    ui.chat = ui.chat.slice(0, -1);
+    saveChat(window.localStorage, ui.chat);
+    ui.chatError = { text: err.message, draft: content };
+  } finally {
+    ui.chatBusy = false;
+    render();
+    const list = document.querySelector('.chat');
+    if (list) list.lastElementChild?.scrollIntoView({ block: 'end' });
+  }
+}
 
 function aiReady() {
   return Boolean(AI_URL) && state.settings.aiEnabled && Boolean(state.settings.aiToken);
@@ -275,6 +319,8 @@ function ustawieniaView() {
     <button type="button" class="btn" data-action="save-token">Zapisz kod</button>
     <button type="button" class="btn secondary" data-action="gen-token">Wygeneruj nowy kod</button>
     <p class="muted">Wygenerowany kod trzeba jeszcze dodać na serwerze AI (zrobi to osoba, która nim zarządza).</p>
+    <label class="toggle">Czat o wydatkach
+      <input type="checkbox" data-action="chat-toggle" ${state.settings.chatEnabled ? 'checked' : ''}></label>
   </section>` : ''}
   <section class="card">
     <h2>Kopia zapasowa</h2>
@@ -291,8 +337,44 @@ function ustawieniaView() {
   </section>`;
 }
 
+function czatView() {
+  const header = '<header><span class="eyebrow">Asystent</span><h1>Czat o wydatkach</h1></header>';
+  if (!state.settings.chatEnabled) {
+    return `${header}
+    <section class="card">
+      <h2>Jak to działa</h2>
+      <p>Zadajesz pytania o swoje wydatki, a AI (Claude) odpowiada na podstawie Twoich transakcji.</p>
+      <p class="muted">Przy każdym pytaniu do AI wysyłane są przez serwer pośredniczący transakcje z wybranego okresu: data, kwota, nazwa sklepu i kategoria, oraz podsumowania miesięcy. Nie są wysyłane numery kont, tytuły ani nazwiska – przelewy trafiają jako „przelew przychodzący/wychodzący”, a przelewy między Twoimi kontami są pomijane. Serwer niczego nie zapisuje; rozmowa zostaje tylko w tym telefonie.</p>
+      <button type="button" class="btn" data-action="chat-enable">Rozumiem, włącz czat</button>
+    </section>`;
+  }
+  if (!state.settings.aiToken) {
+    return `${header}<section class="card"><p>Do czatu potrzebny jest kod dostępu do AI.</p>
+      <button type="button" class="btn secondary" data-action="go" data-view="ustawienia">Przejdź do ustawień</button></section>`;
+  }
+  if (!state.transactions.length) return `${header}${emptyView()}`;
+  const options = [1, 3, 6, 12].map(
+    (m) => `<option value="${m}" ${state.settings.chatMonths === m ? 'selected' : ''}>${m === 1 ? 'ostatni miesiąc' : `ostatnie ${m} mies.`}</option>`
+  ).join('');
+  const bubbles = ui.chat.map((m) =>
+    `<div class="bubble ${m.role}">${m.role === 'assistant' ? formatReply(m.content) : esc(m.content)}</div>`).join('');
+  const chips = ui.chat.length ? '' : `<div class="chips">${SUGGESTIONS.map(
+    (q) => `<button type="button" class="chip" data-action="chat-suggest" data-text="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
+  return `${header}
+  <label class="field">Dane z okresu<select data-action="chat-months">${options}</select></label>
+  <div class="chat" aria-live="polite">${bubbles}${ui.chatBusy ? '<div class="bubble assistant pending">Liczę…</div>' : ''}</div>
+  ${chips}
+  ${ui.chatError ? `<div class="msg err">${esc(ui.chatError.text)}</div>` : ''}
+  <form class="composer" data-action="chat-form">
+    <label class="visually-hidden" for="chat-input">Twoje pytanie</label>
+    <textarea id="chat-input" rows="1" placeholder="Zapytaj o wydatki…" ${ui.chatBusy ? 'disabled' : ''}>${esc(ui.chatError?.draft ?? '')}</textarea>
+    <button type="submit" class="btn" ${ui.chatBusy ? 'disabled' : ''}>Wyślij</button>
+  </form>
+  ${ui.chat.length ? '<button type="button" class="btn secondary" data-action="chat-clear">Wyczyść rozmowę</button>' : ''}`;
+}
+
 function render() {
-  const views = { pulpit: pulpitView, transakcje: transakcjeView, import: importView, ustawienia: ustawieniaView };
+  const views = { pulpit: pulpitView, transakcje: transakcjeView, czat: czatView, import: importView, ustawienia: ustawieniaView };
   app.innerHTML = views[ui.view]();
   document.querySelectorAll('.tabbar button').forEach((b) => {
     if (b.dataset.view === ui.view) b.setAttribute('aria-current', 'page');
@@ -343,6 +425,18 @@ app.addEventListener('click', (e) => {
   }
   if (action === 'ai') runAI();
   if (action === 'backup') saveBackup();
+  if (action === 'chat-enable') {
+    state = setChatSettings(state, { enabled: true });
+    persist();
+    render();
+  }
+  if (action === 'chat-suggest') sendChat(el.dataset.text);
+  if (action === 'chat-clear') {
+    ui.chat = [];
+    ui.chatError = null;
+    saveChat(window.localStorage, ui.chat);
+    render();
+  }
   if (action === 'gen-token') {
     document.getElementById('ai-token').value = generateAccessCode();
   }
@@ -359,6 +453,8 @@ app.addEventListener('click', (e) => {
   }
   if (action === 'wipe' && window.confirm('Na pewno usunąć wszystkie dane z tego telefonu?')) {
     state = emptyState();
+    ui.chat = [];
+    saveChat(window.localStorage, ui.chat);
     persist();
     ui.message = { kind: 'ok', text: 'Dane usunięte.' };
     render();
@@ -374,6 +470,14 @@ app.addEventListener('change', async (e) => {
     render();
   }
   if (action === 'remember') ui.rememberRules = el.checked;
+  if (action === 'chat-toggle') {
+    state = setChatSettings(state, { enabled: el.checked });
+    persist();
+  }
+  if (action === 'chat-months') {
+    state = setChatSettings(state, { months: Number(el.value) });
+    persist();
+  }
   if (action === 'ai-toggle') {
     state = setAiEnabled(state, el.checked);
     persist();
@@ -413,6 +517,20 @@ app.addEventListener('change', async (e) => {
   }
 });
 
+app.addEventListener('submit', (e) => {
+  if (e.target.dataset.action !== 'chat-form') return;
+  e.preventDefault();
+  sendChat(document.getElementById('chat-input').value);
+});
+
+app.addEventListener('keydown', (e) => {
+  // Enter wysyła, Shift+Enter robi nową linię (na klawiaturze komputera).
+  if (e.target.id === 'chat-input' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    sendChat(e.target.value);
+  }
+});
+
 async function saveBackup() {
   const name = `dinero-kopia-${new Date().toISOString().slice(0, 10)}.json`;
   const blob = new Blob([exportBackup(state)], { type: 'application/json' });
@@ -439,4 +557,5 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
+document.querySelector('.tabbar button[data-view="czat"]').hidden = !AI_URL;
 render();

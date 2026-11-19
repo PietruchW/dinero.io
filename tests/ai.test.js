@@ -87,3 +87,44 @@ test('kod dostępu: losowy, długi i poza kopią zapasową', async () => {
   const unauthorized = async () => new Response('{}', { status: 401 });
   await assert.rejects(requestCategories('https://ai.example', [], 'zly', unauthorized), /kod dostępu/);
 });
+
+test('buildChatContext: okres, bez przelewów własnych, przelewy bez nazwisk', async () => {
+  const { setOwnerNames } = await import('../src/store.js');
+  const { buildChatContext } = await import('../src/ai.js');
+  let state = stateWith([
+    ...tx,
+    { id: '7', date: '2026-08-01', amount: -10, name: 'LIDL', title: '' },
+    { id: '8', date: '2026-11-15', amount: -500, name: 'Jan Kowalski', title: 'Przelew własny' }
+  ]);
+  state = setOwnerNames(state, ['Jan Kowalski']);
+  const ctx = buildChatContext(state, 1, '2026-11-19');
+  assert.equal(ctx.from, '2026-11');
+  assert.equal(ctx.to, '2026-11');
+  assert.equal(ctx.today, '2026-11-19');
+  const names = ctx.transactions.map((t) => t[2]);
+  assert.ok(!names.includes('Jan Kowalski'));
+  assert.ok(!names.includes('Anna Nowak'));
+  assert.ok(names.includes('przelew wychodzący'));
+  assert.ok(!ctx.transactions.some((t) => t[0].startsWith('2026-08')));
+  assert.equal(ctx.summary['2026-11'].byCategory['Jedzenie'], 86.4);
+  const wider = buildChatContext(state, 6, '2026-11-19');
+  assert.equal(wider.from, '2026-08');
+});
+
+test('requestChat i historia czatu', async () => {
+  const { requestChat, loadChat, saveChat } = await import('../src/ai.js');
+  const ok = async (url, init) => {
+    assert.equal(url, 'https://ai.example/chat');
+    assert.equal(init.headers.Authorization, 'Bearer k');
+    return new Response('{"reply":"Najwięcej na jedzenie."}', { status: 200 });
+  };
+  assert.equal(await requestChat('https://ai.example', 'k', [{ role: 'user', content: 'Hej' }], {}, ok),
+    'Najwięcej na jedzenie.');
+  const empty = async () => new Response('{"reply":""}', { status: 200 });
+  await assert.rejects(requestChat('https://ai.example', 'k', [], {}, empty), /nie odpowiedziało/);
+  const data = {};
+  const storage = { getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v; } };
+  saveChat(storage, Array.from({ length: 40 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `${i}` })));
+  assert.equal(loadChat(storage).length, 30);
+  assert.deepEqual(loadChat({ getItem: () => '{zepsute' }), []);
+});

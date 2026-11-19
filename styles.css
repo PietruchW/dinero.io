@@ -145,7 +145,7 @@ select {
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding: 6px 8px env(safe-area-inset-bottom);
   background: var(--card); border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
 }
 .tabbar button {
   border: none; background: transparent; color: var(--muted);
@@ -176,3 +176,25 @@ body::before {
 }
 
 .ai-tag { color: var(--accent); font-size: 12px; font-weight: 600; }
+
+.tabbar button[hidden] { display: none; }
+
+.chat { display: flex; flex-direction: column; gap: 10px; }
+.bubble {
+  max-width: 86%; padding: 12px 14px; border-radius: 18px; font-size: 15px; line-height: 1.45;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.bubble.user { align-self: flex-end; background: var(--accent); color: #FFFFFF; border-bottom-right-radius: 6px; }
+.bubble.assistant { align-self: flex-start; background: var(--card); border-bottom-left-radius: 6px; }
+.bubble.pending { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  border: 1px solid #E4E1DB; background: var(--card); color: var(--ink); border-radius: 999px;
+  padding: 10px 14px; font: inherit; font-size: 14px; cursor: pointer; text-align: left; min-height: 44px;
+}
+.composer { display: flex; gap: 8px; align-items: flex-end; }
+.composer textarea {
+  flex: 1; min-height: 48px; max-height: 140px; resize: none; border-radius: 16px; border: 1px solid #E4E1DB;
+  background: var(--card); padding: 12px 14px; font: inherit; font-size: 16px; color: var(--ink);
+}
+.composer .btn { height: 48px; padding: 0 18px; }

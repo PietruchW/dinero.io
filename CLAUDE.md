@@ -54,6 +54,9 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 2. Ekrany wg makiety: limity per kategoria, cele oszczędnościowe, dopracowany wygląd.
 3. AI: ✅ podpowiedzi kategorii. Worker: `https://dinero-ai.w-pietraszewski.workers.dev`
    (wdrażany automatycznie przez Cloudflare Workers Builds z katalogu `worker/` po każdym
-   scaleniu do `main`). Do zrobienia: podsumowanie miesiąca.
+   scaleniu do `main`). ✅ Czat o wydatkach (`/chat`, zakładka Czat, domyślnie wyłączony,
+   wymaga zgody i kodu dostępu; do AI idą transakcje z wybranego okresu bez przelewów
+   własnych, bez tytułów, a przelewy bez nazwy odbiorcy; historia tylko w telefonie
+   pod `dinero.chat.v1`, poza kopią zapasową).
    Zasady: do AI idą tylko nazwa sklepu i kwota (bez przelewów do osób), klucz API
    wyłącznie jako sekret w Workerze, aplikacja musi działać bez AI.

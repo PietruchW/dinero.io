@@ -4,7 +4,8 @@
 
 import { CATEGORIES, merchantKey } from './categorize.js';
 import { normalize } from './detect.js';
-import { recategorize } from './store.js';
+import { recategorize, monthSummary, months as monthList } from './store.js';
+import { NEUTRAL } from './categorize.js';
 
 const AI_CATEGORIES = new Set(CATEGORIES.filter((c) => c !== 'Przychód' && c !== 'Przelewy własne'));
 export const MAX_ITEMS = 40;
@@ -90,4 +91,76 @@ export function generateAccessCode(cryptoImpl = globalThis.crypto) {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   return `dn-${btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+}
+
+export const CHAT_MAX_TX = 2000;
+
+/**
+ * Dane do czatu z ostatnich `monthsBack` miesięcy (licząc od najnowszego miesiąca z danymi).
+ * Bez przelewów własnych. Przelewy (np. do znajomych) bez nazwy odbiorcy – tylko kierunek.
+ * Bez tytułów, numerów kont i identyfikatorów.
+ */
+export function buildChatContext(state, monthsBack = 3, today = new Date().toISOString().slice(0, 10)) {
+  const all = monthList(state);
+  const chosen = all.slice(0, Math.max(1, monthsBack)).sort();
+  const summary = {};
+  for (const m of chosen) {
+    const s = monthSummary(state, m);
+    summary[m] = { spent: s.spent, income: s.income, byCategory: s.byCategory };
+  }
+  const inRange = new Set(chosen);
+  const transactions = state.transactions
+    .filter((t) => inRange.has(t.date.slice(0, 7)) && !NEUTRAL.has(t.category))
+    .slice(0, CHAT_MAX_TX)
+    .map((t) => [
+      t.date,
+      t.amount,
+      isTransfer(t) ? (t.amount > 0 ? 'przelew przychodzący' : 'przelew wychodzący') : t.name,
+      t.category
+    ]);
+  return { today, from: chosen[0] ?? '', to: chosen[chosen.length - 1] ?? '', summary, transactions };
+}
+
+/**
+ * Wysyła rozmowę do pośrednika i zwraca odpowiedź AI.
+ * @param {{role: 'user'|'assistant', content: string}[]} messages
+ */
+export async function requestChat(url, token, messages, context, fetchImpl = fetch, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetchImpl(`${url.replace(/\/$/, '')}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ messages: messages.slice(-20), context }),
+      signal: controller.signal
+    });
+  } catch {
+    throw new Error('Brak połączenia z AI. Sprawdź internet i spróbuj ponownie.');
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) throw new Error(ERRORS[res.status] ?? 'AI chwilowo nie odpowiada. Spróbuj później.');
+  const data = await res.json();
+  if (typeof data.reply !== 'string' || !data.reply) throw new Error('AI nie odpowiedziało. Spróbuj ponownie.');
+  return data.reply;
+}
+
+export const CHAT_KEY = 'dinero.chat.v1';
+
+/** Historia czatu – osobno od danych, tylko w tym telefonie, najwyżej 30 wiadomości. */
+export function loadChat(storage) {
+  try {
+    const data = JSON.parse(storage.getItem(CHAT_KEY) ?? '[]');
+    return Array.isArray(data)
+      ? data.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveChat(storage, messages) {
+  storage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-30)));
 }
