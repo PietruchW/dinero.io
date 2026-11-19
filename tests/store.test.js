@@ -152,3 +152,11 @@ test('zapis z poprzedniej wersji (bez ustawień) wczytuje się bez utraty danych
   assert.deepEqual(loaded.settings, { ownerNames: [], aiEnabled: false });
   assert.deepEqual(loaded.aiRules, {});
 });
+
+test('kategoria Podróże: linie lotnicze i noclegi, ale nie stacja Lotos', () => {
+  assert.equal(categorize({ name: 'RYANAIR DESIGNATED ACTIVI', amount: -766 }).category, 'Podróże');
+  assert.equal(categorize({ name: 'Hotel at Booking.com Amsterdam NL', amount: -292 }).category, 'Podróże');
+  assert.equal(categorize({ name: 'ETIHADAIR6072417098093', amount: -11081 }).category, 'Podróże');
+  assert.equal(categorize({ name: 'LOTOS STACJA 12', amount: -200 }).category, 'Transport');
+  assert.equal(categorize({ name: 'Airbnb * HMXYZ', amount: -900 }).category, 'Podróże');
+});

@@ -8,6 +8,7 @@ export const CATEGORIES = [
   'Wyjścia',
   'Zakupy',
   'Transport',
+  'Podróże',
   'Kosmetyki i zdrowie',
   'Rachunki',
   'Subskrypcje',
@@ -23,7 +24,8 @@ Dla każdej pozycji (nazwa sklepu lub firmy i kwota w PLN) wybierz dokładnie je
 - Jedzenie: supermarkety, sklepy spożywcze, piekarnie, targi
 - Wyjścia: restauracje, kawiarnie, bary, jedzenie na wynos i dostawy, kino, teatr, koncerty, rozrywka
 - Zakupy: ubrania, elektronika, dom i wyposażenie, sklepy internetowe, prezenty
-- Transport: paliwo, serwis i części samochodowe, myjnie, parkingi, komunikacja, taksówki, bilety
+- Transport: codzienne dojazdy – paliwo, serwis i części samochodowe, myjnie, parkingi, komunikacja miejska, taksówki
+- Podróże: wyjazdy i urlopy – linie lotnicze, hotele, noclegi, biura podróży, wypożyczalnie aut za granicą
 - Kosmetyki i zdrowie: drogerie, apteki, lekarze, dentysta, fryzjer, kosmetyczka, siłownia
 - Rachunki: prąd, gaz, internet, telefon, czynsz, ubezpieczenia
 - Subskrypcje: serwisy streamingowe, aplikacje, abonamenty cyfrowe

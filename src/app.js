@@ -15,6 +15,7 @@ const COLORS = {
   'Wyjścia': '#5B7FB8',
   'Zakupy': '#B85C8A',
   'Transport': '#3E8E7E',
+  'Podróże': '#2F7FA6',
   'Kosmetyki i zdrowie': '#C57B6A',
   'Rachunki': '#8C7A3D',
   'Subskrypcje': '#7D6BB3',
