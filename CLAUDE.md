@@ -28,6 +28,10 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
   przelewy własne (po opisie lub imieniu i nazwisku właścicielki; nie liczą się do sum).
 - `src/store.js` – stan, zapis, scalanie importów bez duplikatów, podsumowania, kopia zapasowa.
 - `src/app.js` – UI (renderowanie stringów + delegacja zdarzeń). Jedyny plik z DOM.
+- `src/ai.js`, `src/config.js` – podpowiedzi kategorii z AI (opcjonalne, domyślnie wyłączone);
+  `AI_URL` pusty = funkcja ukryta. Wyniki zapisywane jako reguły per sklep (`aiRules`).
+- `worker/` – pośrednik AI na Cloudflare Workers (klucz API jako sekret, kontrola Origin,
+  limit zapytań). Instrukcja wdrożenia: `worker/README.md`.
 - `sw.js` – service worker, „najpierw sieć”, offline z pamięci podręcznej.
   Nowy plik aplikacji = dopisz go do listy `SHELL`.
 
@@ -47,7 +51,7 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 
 1. ✅ Fundament: import CSV, kategorie, zapis lokalny, kopia zapasowa, PWA.
 2. Ekrany wg makiety: limity per kategoria, cele oszczędnościowe, dopracowany wygląd.
-3. AI (opcjonalnie): podpowiedzi kategorii i podsumowanie miesiąca przez pośrednika
-   na Cloudflare Workers. Do AI idą tylko nazwa sklepu i kwota. Klucz API wyłącznie
-   jako sekret w Workerze, nigdy w repo. Aplikacja musi działać bez AI. Wymaga
-   dopisania adresu Workera do `connect-src` w CSP.
+3. AI: ✅ podpowiedzi kategorii (kod gotowy; czeka na wdrożenie Workera i wpisanie
+   `AI_URL` + adresu w `connect-src` CSP). Do zrobienia: podsumowanie miesiąca.
+   Zasady: do AI idą tylko nazwa sklepu i kwota (bez przelewów do osób), klucz API
+   wyłącznie jako sekret w Workerze, aplikacja musi działać bez AI.

@@ -149,5 +149,6 @@ test('zapis z poprzedniej wersji (bez ustawień) wczytuje się bez utraty danych
   const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify(old) });
   const loaded = loadState(storage);
   assert.equal(loaded.transactions.length, 1);
-  assert.deepEqual(loaded.settings, { ownerNames: [] });
+  assert.deepEqual(loaded.settings, { ownerNames: [], aiEnabled: false });
+  assert.deepEqual(loaded.aiRules, {});
 });

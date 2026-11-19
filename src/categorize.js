@@ -92,9 +92,10 @@ export function isOwner(name, ownerNames = []) {
  * @param {{name: string, title?: string, amount: number}} tx
  * @param {Record<string, string>} userRules klucz sklepu → kategoria
  * @param {string[]} ownerNames imiona i nazwiska właścicielki kont
- * @returns {{category: string, needsReview: boolean, source: 'user'|'owner'|'keyword'|'default'}}
+ * @param {Record<string, string>} aiRules klucz sklepu → kategoria podpowiedziana przez AI
+ * @returns {{category: string, needsReview: boolean, source: 'user'|'owner'|'keyword'|'ai'|'default'}}
  */
-export function categorize(tx, userRules = {}, ownerNames = []) {
+export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
   const key = merchantKey(tx.name);
   if (key && userRules[key]) {
     return { category: userRules[key], needsReview: false, source: 'user' };
@@ -108,6 +109,9 @@ export function categorize(tx, userRules = {}, ownerNames = []) {
       // Kwota dodatnia u sklepu to zwrot – zostaje w kategorii sklepu.
       return { category, needsReview: false, source: 'keyword' };
     }
+  }
+  if (key && aiRules[key]) {
+    return { category: aiRules[key], needsReview: false, source: 'ai' };
   }
   if (tx.amount > 0) return { category: 'Przychód', needsReview: false, source: 'default' };
   return { category: 'Inne', needsReview: true, source: 'default' };

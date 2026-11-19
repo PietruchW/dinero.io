@@ -7,7 +7,10 @@ export const STORAGE_KEY = 'dinero.v1';
 const VERSION = 1;
 
 export function emptyState() {
-  return { version: VERSION, transactions: [], rules: {}, budgets: {}, goals: [], settings: { ownerNames: [] } };
+  return {
+    version: VERSION, transactions: [], rules: {}, aiRules: {}, budgets: {}, goals: [],
+    settings: { ownerNames: [], aiEnabled: false }
+  };
 }
 
 /**
@@ -42,15 +45,24 @@ function validateState(data) {
     version: VERSION,
     transactions: data.transactions,
     rules: data.rules && typeof data.rules === 'object' ? data.rules : {},
+    // Pola dodane po pierwszej wersji – stare zapisy ich nie mają.
+    aiRules: cleanRules(data.aiRules),
     budgets: data.budgets && typeof data.budgets === 'object' ? data.budgets : {},
     goals: Array.isArray(data.goals) ? data.goals : [],
-    // Pole dodane po pierwszej wersji – stare zapisy go nie mają.
     settings: {
       ownerNames: Array.isArray(data.settings?.ownerNames)
         ? data.settings.ownerNames.filter((n) => typeof n === 'string')
-        : []
+        : [],
+      aiEnabled: data.settings?.aiEnabled === true
     }
   };
+}
+
+function cleanRules(rules) {
+  if (!rules || typeof rules !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(rules).filter(([k, v]) => typeof k === 'string' && CATEGORIES.includes(v))
+  );
 }
 
 function ownerNames(state) {
@@ -72,8 +84,8 @@ export function mergeTransactions(state, incoming) {
       continue;
     }
     known.add(tx.id);
-    const { category, needsReview } = categorize(tx, state.rules, ownerNames(state));
-    fresh.push({ ...tx, category, needsReview, manual: false });
+    const { category, needsReview, source } = categorize(tx, state.rules, ownerNames(state), state.aiRules);
+    fresh.push({ ...tx, category, needsReview, source, manual: false });
   }
   const transactions = [...state.transactions, ...fresh].sort((a, b) =>
     a.date === b.date ? 0 : a.date < b.date ? 1 : -1
@@ -92,9 +104,9 @@ export function setCategory(state, txId, category, remember = false) {
   const key = merchantKey(target.name);
   const rules = remember && key ? { ...state.rules, [key]: category } : state.rules;
   const transactions = state.transactions.map((t) => {
-    if (t.id === txId) return { ...t, category, needsReview: false, manual: true };
+    if (t.id === txId) return { ...t, category, needsReview: false, manual: true, source: 'user' };
     if (remember && key && !t.manual && merchantKey(t.name) === key) {
-      return { ...t, category, needsReview: false };
+      return { ...t, category, needsReview: false, source: 'user' };
     }
     return t;
   });
@@ -112,12 +124,17 @@ export function setOwnerNames(state, names) {
   return recategorize(next);
 }
 
+/** Włącza lub wyłącza podpowiedzi AI. */
+export function setAiEnabled(state, enabled) {
+  return { ...state, settings: { ...state.settings, aiEnabled: enabled === true } };
+}
+
 /** Ponowne przypisanie kategorii (np. po zmianie ustawień); ręczne wybory zostają. */
 export function recategorize(state) {
   const transactions = state.transactions.map((t) => {
     if (t.manual) return t;
-    const { category, needsReview } = categorize(t, state.rules, ownerNames(state));
-    return { ...t, category, needsReview };
+    const { category, needsReview, source } = categorize(t, state.rules, ownerNames(state), state.aiRules);
+    return { ...t, category, needsReview, source };
   });
   return { ...state, transactions };
 }

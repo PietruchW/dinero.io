@@ -5,8 +5,10 @@ import { readStatement } from './importer.js';
 import { CATEGORIES } from './categorize.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
-  exportBackup, importBackup, emptyState, setOwnerNames, recategorize
+  exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled
 } from './store.js';
+import { AI_URL } from './config.js';
+import { selectForAI, applyAIResults, requestCategories } from './ai.js';
 
 const COLORS = {
   'Jedzenie': '#D08C3E',
@@ -34,8 +36,39 @@ const ui = {
   rememberRules: true,
   onlyReview: false,
   pending: null, // { bytes, result, fileName }
-  message: null
+  message: null,
+  aiBusy: false
 };
+
+function aiReady() {
+  return Boolean(AI_URL) && state.settings.aiEnabled;
+}
+
+/** Wysyła nierozpoznane sklepy do AI i zapisuje podpowiedzi. */
+async function runAI() {
+  const items = selectForAI(state);
+  if (!items.length || ui.aiBusy) return;
+  ui.aiBusy = true;
+  render();
+  try {
+    const results = await requestCategories(AI_URL, items);
+    const { state: next, applied } = applyAIResults(state, results);
+    state = next;
+    if (persist()) {
+      ui.message = {
+        kind: 'ok',
+        text: applied
+          ? `AI przypisało kategorie ${applied} sklepom. Sprawdź je – możesz zmienić każdą.`
+          : 'AI nie rozpoznało tych sklepów. Przypisz je ręcznie.'
+      };
+    }
+  } catch (err) {
+    ui.message = { kind: 'err', text: err.message };
+  } finally {
+    ui.aiBusy = false;
+    render();
+  }
+}
 let state = recategorize(loadState(window.localStorage));
 
 function esc(value) {
@@ -151,6 +184,7 @@ function transakcjeView() {
             <span class="tx-name">${esc(t.name || '(bez nazwy)')}</span>
             ${categorySelect(t)}
             ${t.needsReview ? '<span class="review">Do sprawdzenia</span>' : ''}
+            ${t.source === 'ai' ? '<span class="ai-tag">Przypisane przez AI</span>' : ''}
           </div>
           <span class="tx-amount ${t.amount > 0 ? 'plus' : ''}">${t.amount > 0 ? '+' : ''}${esc(money.format(t.amount))}</span>
         </div>`).join('')}
@@ -161,6 +195,9 @@ function transakcjeView() {
     <div><span class="eyebrow">Transakcje</span><h1>${esc(monthLabel(month))}</h1></div>
     ${monthNav()}
   </header>
+  ${ui.message ? `<div class="msg ${ui.message.kind}">${esc(ui.message.text)}</div>` : ''}
+  ${aiReady() && (selectForAI(state).length || ui.aiBusy) ? `<button type="button" class="btn" data-action="ai" ${ui.aiBusy ? 'disabled' : ''}>
+    ${ui.aiBusy ? 'AI przypisuje kategorie…' : `Przypisz kategorie z AI (${selectForAI(state).length})`}</button>` : ''}
   <div class="card">
     <label class="toggle">Pokaż tylko do sprawdzenia
       <input type="checkbox" data-action="only-review" ${ui.onlyReview ? 'checked' : ''}></label>
@@ -226,6 +263,12 @@ function ustawieniaView() {
     <input id="owner-names" class="text-input" type="text" autocomplete="name" value="${esc(state.settings.ownerNames.join(', '))}" placeholder="np. Anna Nowak">
     <button type="button" class="btn" data-action="save-owner">Zapisz</button>
   </section>
+  ${AI_URL ? `<section class="card">
+    <h2>Podpowiedzi AI</h2>
+    <p class="muted">Gdy włączone, nierozpoznane płatności są wysyłane do AI (Claude) przez serwer pośredniczący, który niczego nie zapisuje. Wysyłana jest tylko nazwa sklepu i kwota – bez dat, numerów kont, tytułów i bez przelewów do osób. Każdą podpowiedź możesz zmienić.</p>
+    <label class="toggle">Włącz podpowiedzi AI
+      <input type="checkbox" data-action="ai-toggle" ${state.settings.aiEnabled ? 'checked' : ''}></label>
+  </section>` : ''}
   <section class="card">
     <h2>Kopia zapasowa</h2>
     <p>Dane są tylko w tym telefonie. Raz w miesiącu zapisz kopię w Plikach albo na iCloud – jeśli telefon wyczyści dane strony, odtworzysz wszystko z kopii.</p>
@@ -289,7 +332,9 @@ app.addEventListener('click', (e) => {
     ui.pending = null;
     ui.month = null;
     render();
+    if (aiReady()) runAI();
   }
+  if (action === 'ai') runAI();
   if (action === 'backup') saveBackup();
   if (action === 'save-owner') {
     const input = document.getElementById('owner-names');
@@ -314,6 +359,10 @@ app.addEventListener('change', async (e) => {
     render();
   }
   if (action === 'remember') ui.rememberRules = el.checked;
+  if (action === 'ai-toggle') {
+    state = setAiEnabled(state, el.checked);
+    persist();
+  }
   if (action === 'only-review') {
     ui.onlyReview = el.checked;
     render();

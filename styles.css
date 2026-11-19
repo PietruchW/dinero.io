@@ -174,3 +174,5 @@ body::before {
   background: var(--bg);
   z-index: 10;
 }
+
+.ai-tag { color: var(--accent); font-size: 12px; font-weight: 600; }
