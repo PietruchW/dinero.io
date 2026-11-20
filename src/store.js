@@ -1,7 +1,7 @@
 // Stan aplikacji i jego zapis. Dane leżą wyłącznie w pamięci przeglądarki
 // na urządzeniu użytkowniczki (localStorage). Nic nie jest wysyłane.
 
-import { categorize, merchantKey, isOwner, CATEGORIES, NEUTRAL } from './categorize.js';
+import { categorize, ruleKey, isOwner, CATEGORIES, NEUTRAL } from './categorize.js';
 import { normalize } from './detect.js';
 
 export const STORAGE_KEY = 'dinero.v1';
@@ -183,11 +183,11 @@ export function setCategory(state, txId, category, remember = false) {
   // Dla przelewów z udziałem samej właścicielki nie zapamiętujemy reguły –
   // zmienia się tylko ta jedna transakcja (reguła złapałaby wszystkie
   // przelewy między jej kontami, w obie strony).
-  const key = isOwner(target.name, ownerNames(state)) ? '' : merchantKey(target.name);
+  const key = isOwner(target.name, ownerNames(state)) ? '' : ruleKey(target);
   const rules = remember && key ? { ...state.rules, [key]: category } : state.rules;
   const transactions = state.transactions.map((t) => {
     if (t.id === txId) return { ...t, category, needsReview: false, manual: true, source: 'user' };
-    if (remember && key && !t.manual && merchantKey(t.name) === key) {
+    if (remember && key && !t.manual && ruleKey(t) === key) {
       return { ...t, category, needsReview: false, source: 'user' };
     }
     return t;

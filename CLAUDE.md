@@ -38,6 +38,9 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
   a klucz do ID dalej z nazwy produktu + numeru (zgodność ze starszymi importami).
 - `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”,
   przelewy własne (po opisie lub imieniu i nazwisku właścicielki; nie liczą się do sum).
+  Kolejność: właścicielka → reguła użytkowniczki → opis przelewu własnego → słowa kluczowe → AI →
+  domyślna. Reguły są osobne dla wydatków i wpływów (`ruleKey`: wpływy z prefiksem „+”),
+  reguły AI tylko dla wydatków – wpływ nie może stać się ujemnym wydatkiem przez regułę.
 - `src/store.js` – stan, zapis, scalanie importów bez duplikatów (także po starym ID sprzed kont –
   poprawia kontrahenta, tytuł, konto i – bez ręcznej zmiany – kategorię; transakcje zachowują stare ID), filtr kont (z pozycją
   „Bez nazwy konta”), podsumowania, kopia zapasowa. Przy wczytaniu stare nazwy kont BNP

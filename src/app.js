@@ -48,6 +48,7 @@ const ui = {
   rememberRules: true,
   onlyReview: false,
   editLimits: false,
+  category: null, // filtr kategorii w Transakcjach (z pulpitu)
   limitDraft: null, // wpisane, jeszcze niezapisane kwoty limitów
   pending: null, // { result, fileName }
   message: null,
@@ -240,21 +241,21 @@ function categoriesCard(s) {
   const minus = Object.entries(s.byCategory).filter(([, v]) => v < 0).sort((a, b) => a[1] - b[1]);
   const row = (r) => {
     if (!r.limit) {
-      return `<div class="cat-row">
-        <div class="cat-top"><span class="cat-name">${dot(r.category)}${esc(r.category)}</span>
-          <span>${esc(money.format(r.spent))}</span></div>
-        <div class="bar"><span style="width:${Math.max(2, Math.round((r.spent / max) * 100))}%"></span></div>
-      </div>`;
+      return `<button type="button" class="cat-row" data-action="show-category" data-category="${esc(r.category)}">
+        <span class="cat-top"><span class="cat-name">${dot(r.category)}${esc(r.category)}</span>
+          <span>${esc(money.format(r.spent))}</span></span>
+        <span class="bar"><span style="width:${Math.max(2, Math.round((r.spent / max) * 100))}%"></span></span>
+      </button>`;
     }
     const note = r.level === 'over'
       ? `Przekroczony o ${money.format(-r.left)}`
       : `Zostało ${money.format(r.left)}`;
-    return `<div class="cat-row">
-      <div class="cat-top"><span class="cat-name">${dot(r.category)}${esc(r.category)}</span>
-        <span>${esc(money.format(r.spent))} <span class="muted">z ${esc(limitMoney(r.limit))}</span></span></div>
-      <div class="bar limit ${r.level}"><span style="width:${Math.max(2, Math.min(100, Math.round(r.ratio * 100)))}%"></span></div>
+    return `<button type="button" class="cat-row" data-action="show-category" data-category="${esc(r.category)}">
+      <span class="cat-top"><span class="cat-name">${dot(r.category)}${esc(r.category)}</span>
+        <span>${esc(money.format(r.spent))} <span class="muted">z ${esc(limitMoney(r.limit))}</span></span></span>
+      <span class="bar limit ${r.level}"><span style="width:${Math.max(2, Math.min(100, Math.round(r.ratio * 100)))}%"></span></span>
       <span class="limit-note ${r.level}">${esc(note)}</span>
-    </div>`;
+    </button>`;
   };
   return `<section class="card">
     <div class="card-head"><h2>Kategorie</h2>
@@ -266,8 +267,9 @@ function categoriesCard(s) {
     ${minus.length ? `<div class="minus-cats">
       <p class="limit-alert">Wpływy w kategoriach wydatków</p>
       <p class="muted">Te kategorie mają więcej wpływów (zwrotów) niż wydatków. Jeśli to przelewy z Twojego innego konta, zmień ich kategorię na „Przelewy własne”.</p>
-      ${minus.map(([c, v]) => `<div class="cat-top"><span class="cat-name">${dot(c)}${esc(c)}</span>
-        <span class="plus">+${esc(money.format(-v))}</span></div>`).join('')}
+      ${minus.map(([c, v]) => `<button type="button" class="cat-row" data-action="show-category" data-category="${esc(c)}">
+        <span class="cat-top"><span class="cat-name">${dot(c)}${esc(c)}</span>
+        <span class="plus">+${esc(money.format(-v))}</span></span></button>`).join('')}
     </div>` : ''}
   </section>`;
 }
@@ -339,7 +341,8 @@ function transakcjeView() {
   const filter = accountFilter();
   const showAccount = !ui.account && accounts(state).length + (hasUnnamedAccount(state) ? 1 : 0) > 1;
   const list = forAccount(state, ui.account).transactions
-    .filter((t) => t.date.startsWith(month) && (!ui.onlyReview || t.needsReview));
+    .filter((t) => t.date.startsWith(month) && (!ui.onlyReview || t.needsReview) &&
+      (!ui.category || t.category === ui.category));
   const byDay = new Map();
   for (const t of list) {
     if (!byDay.has(t.date)) byDay.set(t.date, []);
@@ -368,6 +371,8 @@ function transakcjeView() {
     ${monthNav()}
   </header>
   ${filter}
+  ${ui.category ? `<div class="chip-row"><span class="chip">${dot(ui.category)}${esc(ui.category)}</span>
+    <button type="button" class="link-btn" data-action="clear-category">Pokaż wszystkie</button></div>` : ''}
   ${ui.message ? `<div class="msg ${ui.message.kind}">${esc(ui.message.text)}</div>` : ''}
   ${aiReady() && (selectForAI(state).length || ui.aiBusy) ? `<button type="button" class="btn" data-action="ai" ${ui.aiBusy ? 'disabled' : ''}>
     ${ui.aiBusy ? 'AI przypisuje kategorie…' : `Przypisz kategorie z AI (${selectForAI(state).length})`}</button>` : ''}
@@ -537,7 +542,10 @@ function go(view) {
 
 document.querySelector('.tabbar').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-view]');
-  if (btn) go(btn.dataset.view);
+  if (btn) {
+    ui.category = null;
+    go(btn.dataset.view);
+  }
 });
 
 app.addEventListener('click', (e) => {
@@ -545,6 +553,15 @@ app.addEventListener('click', (e) => {
   if (!el) return;
   const action = el.dataset.action;
   if (action === 'go') go(el.dataset.view);
+  if (action === 'show-category') {
+    ui.category = el.dataset.category;
+    ui.onlyReview = false;
+    go('transakcje');
+  }
+  if (action === 'clear-category') {
+    ui.category = null;
+    render();
+  }
   if (action === 'edit-limits') {
     ui.editLimits = true;
     ui.limitDraft = null;
