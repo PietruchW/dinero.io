@@ -113,11 +113,18 @@ export function isOwner(name, ownerNames = []) {
  */
 export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
   const key = merchantKey(tx.name);
+  // Przelew, w którym po drugiej stronie jest sama właścicielka, to zawsze
+  // przelew własny – także gdy dla tej nazwy zapamiętano inną kategorię.
+  // Inaczej reguła z jednego przelewu przestawiała wszystkie wpływy z jej
+  // drugiego konta na kategorię wydatków (i wydatki wychodziły na minusie).
+  if (isOwner(tx.name, ownerNames)) {
+    return { category: 'Przelewy własne', needsReview: false, source: 'owner' };
+  }
   if (key && userRules[key]) {
     return { category: userRules[key], needsReview: false, source: 'user' };
   }
   const haystack = ` ${normalize(`${tx.name} ${tx.title ?? ''}`)} `;
-  if (isOwner(tx.name, ownerNames) || OWN_TRANSFER.some((w) => hasWord(haystack, w))) {
+  if (OWN_TRANSFER.some((w) => hasWord(haystack, w))) {
     return { category: 'Przelewy własne', needsReview: false, source: 'owner' };
   }
   for (const [category, words] of KEYWORDS) {

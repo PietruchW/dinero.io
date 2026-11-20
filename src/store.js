@@ -1,7 +1,7 @@
 // Stan aplikacji i jego zapis. Dane leżą wyłącznie w pamięci przeglądarki
 // na urządzeniu użytkowniczki (localStorage). Nic nie jest wysyłane.
 
-import { categorize, merchantKey, CATEGORIES, NEUTRAL } from './categorize.js';
+import { categorize, merchantKey, isOwner, CATEGORIES, NEUTRAL } from './categorize.js';
 import { normalize } from './detect.js';
 
 export const STORAGE_KEY = 'dinero.v1';
@@ -180,7 +180,10 @@ export function setCategory(state, txId, category, remember = false) {
   if (!CATEGORIES.includes(category)) throw new Error(`Nieznana kategoria: ${category}`);
   const target = state.transactions.find((t) => t.id === txId);
   if (!target) return state;
-  const key = merchantKey(target.name);
+  // Dla przelewów z udziałem samej właścicielki nie zapamiętujemy reguły –
+  // zmienia się tylko ta jedna transakcja (reguła złapałaby wszystkie
+  // przelewy między jej kontami, w obie strony).
+  const key = isOwner(target.name, ownerNames(state)) ? '' : merchantKey(target.name);
   const rules = remember && key ? { ...state.rules, [key]: category } : state.rules;
   const transactions = state.transactions.map((t) => {
     if (t.id === txId) return { ...t, category, needsReview: false, manual: true, source: 'user' };
@@ -326,7 +329,7 @@ export function monthSummary(state, month) {
  * @param {{spent: number, income: number}} summary wynik monthSummary
  */
 export function spendingRatio(summary) {
-  if (!(summary.income > 0)) return null;
+  if (!(summary.income > 0) || summary.spent < 0) return null;
   const ratio = summary.spent / summary.income;
   return {
     ratio,

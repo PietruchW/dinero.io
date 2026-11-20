@@ -364,3 +364,29 @@ test('Alior: ponowny import bez nazwy konta też naprawia', () => {
   assert.equal(state.transactions.find((t) => t.amount === -2449.37).category, 'Podatki i ZUS');
   assert.ok(state.transactions.every((t) => !t.account));
 });
+
+test('reguła zapamiętana dla nazwy właścicielki nie przestawia przelewów własnych', () => {
+  const tx = (id, amount, name) =>
+    ({ id, date: '2026-11-05', amount, name, title: '', currency: 'PLN', category: 'Inne',
+      needsReview: false, source: 'default', manual: false });
+  let state = setOwnerNames({ ...emptyState(), transactions: [
+    tx('out', -2449.37, 'MOONLIGHT ANNA NOWAK'), tx('in1', 15000, 'MOONLIGHT ANNA NOWAK'),
+    tx('in2', 20000, 'MOONLIGHT ANNA NOWAK'), tx('shop', -100, 'LIDL')
+  ] }, ['Anna Nowak']);
+  assert.ok(state.transactions.filter((t) => t.id !== 'shop').every((t) => t.category === 'Przelewy własne'));
+  // Ręczna zmiana jednego przelewu z „zapamiętaj” – tylko on się zmienia, bez reguły.
+  state = setCategory(state, 'out', 'Rachunki', true);
+  assert.deepEqual(state.rules, {});
+  const by = Object.fromEntries(state.transactions.map((t) => [t.id, t.category]));
+  assert.deepEqual(by, { out: 'Rachunki', in1: 'Przelewy własne', in2: 'Przelewy własne', shop: 'Jedzenie' });
+  // Reguła zapisana przez starszą wersję nie wygrywa z przelewem własnym.
+  const old = recategorize({ ...state, rules: { 'moonlight anna': 'Rachunki' } });
+  assert.equal(old.transactions.find((t) => t.id === 'in1').category, 'Przelewy własne');
+  const s = monthSummary(old, '2026-11');
+  assert.ok(s.spent > 0);
+  assert.equal(s.byCategory['Rachunki'], 2449.37);
+});
+
+test('pierścień: ujemne wydatki – bez pierścienia', () => {
+  assert.equal(spendingRatio({ spent: -17318.8, income: 10.18 }), null);
+});
