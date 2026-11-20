@@ -89,6 +89,17 @@ function hasWord(haystack, word) {
 }
 
 /**
+ * Klucz reguły „Zapamiętaj dla…”: osobny dla wydatków i wpływów od tego
+ * samego kontrahenta (wpływy z prefiksem „+”). Reguła z wydatku nie może
+ * zamienić wpływu (np. faktury) w ujemny wydatek.
+ * @param {{name: string, amount: number}} tx
+ */
+export function ruleKey(tx) {
+  const key = merchantKey(tx.name);
+  return key && tx.amount > 0 ? `+${key}` : key;
+}
+
+/**
  * Czy kontrahent to właścicielka konta: wszystkie słowa któregoś z podanych
  * imion i nazwisk występują w nazwie (w dowolnej kolejności, bez ogonków),
  * np. „Anna Nowak” pasuje do „NOWAK ANNA MARIA UL. …”.
@@ -113,6 +124,7 @@ export function isOwner(name, ownerNames = []) {
  */
 export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
   const key = merchantKey(tx.name);
+  const rule = ruleKey(tx);
   // Przelew, w którym po drugiej stronie jest sama właścicielka, to zawsze
   // przelew własny – także gdy dla tej nazwy zapamiętano inną kategorię.
   // Inaczej reguła z jednego przelewu przestawiała wszystkie wpływy z jej
@@ -120,8 +132,8 @@ export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
   if (isOwner(tx.name, ownerNames)) {
     return { category: 'Przelewy własne', needsReview: false, source: 'owner' };
   }
-  if (key && userRules[key]) {
-    return { category: userRules[key], needsReview: false, source: 'user' };
+  if (rule && userRules[rule]) {
+    return { category: userRules[rule], needsReview: false, source: 'user' };
   }
   const haystack = ` ${normalize(`${tx.name} ${tx.title ?? ''}`)} `;
   if (OWN_TRANSFER.some((w) => hasWord(haystack, w))) {
@@ -136,7 +148,8 @@ export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
       return { category, needsReview: false, source: 'keyword' };
     }
   }
-  if (key && aiRules[key]) {
+  // AI dostaje tylko wydatki, więc jego podpowiedzi dotyczą tylko wydatków.
+  if (key && tx.amount < 0 && aiRules[key]) {
     // „Inne” od AI znaczy „nie wiem” – transakcja zostaje do sprawdzenia przez człowieka.
     return { category: aiRules[key], needsReview: aiRules[key] === 'Inne', source: 'ai' };
   }

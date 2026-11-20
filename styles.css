@@ -88,6 +88,17 @@ p { margin: 0; line-height: 1.45; }
 .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 .cat-row { display: flex; flex-direction: column; gap: 8px; }
+button.cat-row {
+  width: 100%; background: none; border: 0; padding: 4px 0; margin: 0; font: inherit; color: inherit;
+  text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+button.cat-row:active { opacity: 0.6; }
+.bar { display: block; }
+.chip-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  background: var(--card); font-size: 15px; font-weight: 600;
+}
 .cat-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 15px; }
 .cat-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 .dot { width: 10px; height: 10px; border-radius: 5px; flex-shrink: 0; }

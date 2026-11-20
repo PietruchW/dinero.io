@@ -390,3 +390,28 @@ test('reguła zapamiętana dla nazwy właścicielki nie przestawia przelewów w�
 test('pierścień: ujemne wydatki – bez pierścienia', () => {
   assert.equal(spendingRatio({ spent: -17318.8, income: 10.18 }), null);
 });
+
+test('reguły osobno dla wydatków i wpływów; AI tylko dla wydatków', () => {
+  const tx = (id, amount, name) =>
+    ({ id, date: '2026-11-05', amount, name, title: '', currency: 'PLN', category: 'Inne',
+      needsReview: false, source: 'default', manual: false });
+  // Podpowiedź AI „Inne” dla kontrahenta nie przestawia faktury od niego.
+  let state = recategorize({ ...emptyState(), aiRules: { 'firma klient': 'Inne' }, transactions: [
+    tx('fv', 32265.23, 'FIRMA KLIENT SA'), tx('obiad', -40, 'FIRMA KLIENT SA')
+  ] });
+  const cat = () => Object.fromEntries(state.transactions.map((t) => [t.id, t.category]));
+  assert.deepEqual(cat(), { fv: 'Przychód', obiad: 'Inne' });
+  assert.ok(monthSummary(state, '2026-11').spent > 0);
+  // „Zapamiętaj” na wydatku nie rusza wpływu od tego samego kontrahenta.
+  state = setCategory(state, 'obiad', 'Wyjścia', true);
+  assert.deepEqual(state.rules, { 'firma klient': 'Wyjścia' });
+  assert.deepEqual(cat(), { fv: 'Przychód', obiad: 'Wyjścia' });
+  // Reguła z wpływu dotyczy tylko wpływów.
+  state = { ...state, transactions: [...state.transactions, tx('fv2', 1000, 'FIRMA KLIENT SA'), tx('obiad2', -30, 'FIRMA KLIENT SA')] };
+  state = setCategory(recategorize(state), 'fv', 'Inne', true);
+  assert.equal(state.rules['+firma klient'], 'Inne');
+  assert.deepEqual(cat(), { fv: 'Inne', obiad: 'Wyjścia', fv2: 'Inne', obiad2: 'Wyjścia' });
+  // Stara reguła bez „+” (zapisana przed zmianą) dotyczy już tylko wydatków.
+  const old = recategorize({ ...state, rules: { 'firma klient': 'Inne' } });
+  assert.equal(old.transactions.find((t) => t.id === 'fv2').category, 'Przychód');
+});
