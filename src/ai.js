@@ -4,8 +4,7 @@
 
 import { CATEGORIES, merchantKey } from './categorize.js';
 import { normalize } from './detect.js';
-import { recategorize, monthSummary, months as monthList } from './store.js';
-import { NEUTRAL } from './categorize.js';
+import { recategorize, monthSummary, setCategory, months as monthList } from './store.js';
 
 const AI_CATEGORIES = new Set(CATEGORIES.filter((c) => c !== 'Przychód' && c !== 'Przelewy własne'));
 export const MAX_ITEMS = 40;
@@ -98,7 +97,9 @@ export const CHAT_MAX_TX = 2000;
 /**
  * Dane do czatu z ostatnich `monthsBack` miesięcy (licząc od najnowszego miesiąca z danymi).
  * Bez przelewów własnych. Przelewy (np. do znajomych) bez nazwy odbiorcy – tylko kierunek.
- * Bez tytułów, numerów kont i identyfikatorów.
+ * Bez tytułów, numerów kont i identyfikatorów – każda transakcja ma tylko numer porządkowy
+ * („t1”, „t2”…), po którym czat może zaproponować zmianę kategorii. Mapa numerów na
+ * transakcje (`refs`) zostaje w telefonie – przed wysłaniem trzeba ją odjąć.
  */
 export function buildChatContext(state, monthsBack = 3, today = new Date().toISOString().slice(0, 10)) {
   const all = monthList(state);
@@ -106,19 +107,25 @@ export function buildChatContext(state, monthsBack = 3, today = new Date().toISO
   const summary = {};
   for (const m of chosen) {
     const s = monthSummary(state, m);
-    summary[m] = { spent: s.spent, income: s.income, byCategory: s.byCategory };
+    summary[m] = { spent: s.spent, income: s.income, saved: s.saved, byCategory: s.byCategory };
   }
   const inRange = new Set(chosen);
-  const transactions = state.transactions
-    .filter((t) => inRange.has(t.date.slice(0, 7)) && !NEUTRAL.has(t.category))
-    .slice(0, CHAT_MAX_TX)
-    .map((t) => [
+  const picked = state.transactions
+    .filter((t) => inRange.has(t.date.slice(0, 7)) && t.category !== 'Przelewy własne')
+    .slice(0, CHAT_MAX_TX);
+  const refs = {};
+  const transactions = picked.map((t, i) => {
+    const ref = `t${i + 1}`;
+    refs[ref] = t.id;
+    return [
       t.date,
       t.amount,
       isTransfer(t) ? (t.amount > 0 ? 'przelew przychodzący' : 'przelew wychodzący') : t.name,
-      t.category
-    ]);
-  return { today, from: chosen[0] ?? '', to: chosen[chosen.length - 1] ?? '', summary, transactions };
+      t.category,
+      ref
+    ];
+  });
+  return { today, from: chosen[0] ?? '', to: chosen[chosen.length - 1] ?? '', summary, transactions, refs };
 }
 
 /**
@@ -133,7 +140,8 @@ export async function requestChat(url, token, messages, context, fetchImpl = fet
     res = await fetchImpl(`${url.replace(/\/$/, '')}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ messages: messages.slice(-20), context }),
+      // Tylko rola i treść – propozycje zmian (z identyfikatorami) zostają w telefonie.
+      body: JSON.stringify({ messages: messages.slice(-20).map(({ role, content }) => ({ role, content })), context }),
       signal: controller.signal
     });
   } catch {
@@ -147,15 +155,76 @@ export async function requestChat(url, token, messages, context, fetchImpl = fet
   return data.reply;
 }
 
+const CHANGES_BLOCK = /<zmiany>([\s\S]*?)(?:<\/zmiany>|$)/i;
+const MAX_CHANGES = 300;
+
+/**
+ * Rozdziela odpowiedź czatu na tekst i propozycje zmian kategorii. Czat dopisuje
+ * je na końcu jako blok <zmiany>[{"ref":"t12","kategoria":"Edukacja"}]</zmiany>.
+ * Zostają tylko zmiany dla znanych numerów, na istniejące kategorie i inne niż obecna.
+ * @param {string} reply
+ * @param {Record<string, string>} refs numer z kontekstu → id transakcji
+ * @returns {{text: string, changes: {id: string, category: string}[]}}
+ */
+export function parseChatReply(reply, refs, state) {
+  const match = reply.match(CHANGES_BLOCK);
+  if (!match) return { text: reply.trim(), changes: [] };
+  const text = reply.replace(match[0], '').trim();
+  let list = [];
+  try {
+    list = JSON.parse(match[1].trim());
+  } catch {
+    list = [];
+  }
+  const byId = new Map(state.transactions.map((t) => [t.id, t]));
+  const seen = new Set();
+  const changes = [];
+  for (const c of Array.isArray(list) ? list : []) {
+    const ref = typeof c?.ref === 'string' && /^t\d{1,5}$/.test(c.ref) ? c.ref : null;
+    const id = ref && Object.hasOwn(refs, ref) ? refs[ref] : null;
+    const category = c?.kategoria ?? c?.category;
+    const tx = id ? byId.get(id) : null;
+    if (!tx || seen.has(id) || !CATEGORIES.includes(category) || tx.category === category) continue;
+    seen.add(id);
+    changes.push({ id, category });
+    if (changes.length >= MAX_CHANGES) break;
+  }
+  return { text: text || (changes.length ? 'Proponuję takie zmiany kategorii:' : ''), changes };
+}
+
+/**
+ * Zatwierdzone propozycje z czatu – każda jak ręczna zmiana kategorii.
+ * Transakcje, których już nie ma, są pomijane.
+ * @returns {{state: object, applied: number}}
+ */
+export function applyChatChanges(state, changes, remember = false) {
+  let next = state;
+  let applied = 0;
+  for (const { id, category } of changes) {
+    if (!next.transactions.some((t) => t.id === id) || !CATEGORIES.includes(category)) continue;
+    next = setCategory(next, id, category, remember);
+    applied += 1;
+  }
+  return { state: next, applied };
+}
+
 export const CHAT_KEY = 'dinero.chat.v1';
 
 /** Historia czatu – osobno od danych, tylko w tym telefonie, najwyżej 30 wiadomości. */
 export function loadChat(storage) {
   try {
     const data = JSON.parse(storage.getItem(CHAT_KEY) ?? '[]');
-    return Array.isArray(data)
-      ? data.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-      : [];
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .map((m) => {
+        const changes = Array.isArray(m.changes)
+          ? m.changes.filter((c) => c && typeof c.id === 'string' && CATEGORIES.includes(c.category))
+          : [];
+        if (m.role !== 'assistant' || !changes.length) return { role: m.role, content: m.content };
+        const status = ['pending', 'applied', 'rejected'].includes(m.status) ? m.status : 'pending';
+        return { role: m.role, content: m.content, changes, status, ...(m.applied ? { applied: m.applied } : {}) };
+      });
   } catch {
     return [];
   }

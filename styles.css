@@ -95,7 +95,7 @@ button.cat-row {
 button.cat-row:active { opacity: 0.6; }
 .bar { display: block; }
 .chip-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.chip {
+.filter-chip {
   display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
   background: var(--card); font-size: 15px; font-weight: 600;
 }
@@ -113,6 +113,13 @@ button.cat-row:active { opacity: 0.6; }
 .limit-note.warn { color: #9A6416; }
 .limit-note.over { color: var(--warn); font-weight: 600; }
 .limit-alert { margin: 0; color: var(--warn); font-weight: 600; font-size: 14px; }
+.changes h2 { font-size: 16px; }
+.change-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.change-list li { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.change-list li:last-child { border-bottom: 0; }
+.change-name { font-weight: 600; overflow-wrap: anywhere; }
+.change-name .muted { font-weight: 400; font-size: 12px; }
+.change-cats { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .minus-cats { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .minus-cats .plus { color: var(--good); font-weight: 600; }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }

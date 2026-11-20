@@ -12,7 +12,7 @@ import {
 import { AI_URL, APP_VERSION } from './config.js';
 import {
   selectForAI, applyAIResults, requestCategories, generateAccessCode,
-  buildChatContext, requestChat, loadChat, saveChat
+  buildChatContext, requestChat, loadChat, saveChat, parseChatReply, applyChatChanges
 } from './ai.js';
 
 const COLORS = {
@@ -28,6 +28,8 @@ const COLORS = {
   'Subskrypcje': '#7D6BB3',
   'Inne': '#9A958C',
   'Przelewy własne': '#B9B4AA',
+  'Oszczędności i inwestycje': '#3D7A8C',
+  'Edukacja': '#8A6FB0',
   'Przychód': '#2F6B57'
 };
 const MONTHS = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września',
@@ -80,9 +82,13 @@ async function sendChat(text) {
   saveChat(window.localStorage, ui.chat);
   render();
   try {
-    const context = buildChatContext(state, state.settings.chatMonths);
+    // Mapa numerów transakcji (refs) zostaje w telefonie – do AI idzie tylko kontekst.
+    const { refs, ...context } = buildChatContext(state, state.settings.chatMonths);
     const reply = await requestChat(AI_URL, state.settings.aiToken, ui.chat, context);
-    ui.chat = [...ui.chat, { role: 'assistant', content: reply }];
+    const { text, changes } = parseChatReply(reply, refs, state);
+    ui.chat = [...ui.chat, changes.length
+      ? { role: 'assistant', content: text, changes, status: 'pending' }
+      : { role: 'assistant', content: text || reply }];
     saveChat(window.localStorage, ui.chat);
   } catch (err) {
     // Pytanie bez odpowiedzi wraca do pola tekstowego – rozmowa zostaje spójna.
@@ -228,6 +234,13 @@ function incomeRing(s, month) {
   </div>`;
 }
 
+/** Odmiana po liczbie: 1 zmianę, 2–4 zmiany (oprócz 12–14), 5+ zmian. */
+function plural(n, one, few, many) {
+  if (n === 1) return one;
+  const tens = n % 100;
+  return n % 10 >= 2 && n % 10 <= 4 && (tens < 12 || tens > 14) ? few : many;
+}
+
 const dot = (name) => `<span class="dot" style="background:${COLORS[name] ?? '#9A958C'}"></span>`;
 
 /** Lista kategorii z paskami. Z limitem pasek pokazuje jego wykorzystanie. */
@@ -318,6 +331,7 @@ function pulpitView() {
     <span class="sub">Wpływy: ${esc(money.format(s.income))}</span>
     ${incomeRing(s, month)}
   </section>
+  ${s.saved ? `<p class="muted">${s.saved > 0 ? 'Odłożone i zainwestowane' : 'Wypłacone z oszczędności i inwestycji'}: ${esc(money.format(Math.abs(s.saved)))} – nie liczy się do wydatków ani wpływów.</p>` : ''}
   ${s.neutral ? `<p class="muted">Przelewy między Twoimi kontami (${esc(money.format(s.neutral))}) nie liczą się do wydatków ani wpływów.</p>` : ''}
   ${state.settings.ownerNames.length ? '' : `<section class="card">
     <p>Wpisz swoje imię i nazwisko, żeby przelewy między Twoimi kontami nie liczyły się jako wydatki.</p>
@@ -372,7 +386,7 @@ function transakcjeView() {
     ${monthNav()}
   </header>
   ${filter}
-  ${ui.category ? `<div class="chip-row"><span class="chip">${dot(ui.category)}${esc(ui.category)}</span>
+  ${ui.category ? `<div class="chip-row"><span class="filter-chip">${dot(ui.category)}${esc(ui.category)}</span>
     <button type="button" class="link-btn" data-action="clear-category">Pokaż wszystkie</button></div>` : ''}
   ${ui.message ? `<div class="msg ${ui.message.kind}">${esc(ui.message.text)}</div>` : ''}
   ${aiReady() && (selectForAI(state).length || ui.aiBusy) ? `<button type="button" class="btn" data-action="ai" ${ui.aiBusy ? 'disabled' : ''}>
@@ -485,6 +499,29 @@ function ustawieniaView() {
   </section>`;
 }
 
+/** Propozycje zmian kategorii z czatu – do zatwierdzenia jednym przyciskiem. */
+function changesCard(m, index) {
+  const byId = new Map(state.transactions.map((t) => [t.id, t]));
+  const rows = m.changes.map((c) => ({ c, t: byId.get(c.id) })).filter((r) => r.t);
+  if (!rows.length) return '';
+  const list = rows.map(({ c, t }) => `<li>
+    <span class="change-name">${esc(t.name || '(bez nazwy)')} <span class="muted">${esc(dayLabel(t.date))} · ${esc(money.format(t.amount))}</span></span>
+    <span class="change-cats"><span class="muted">${esc(t.category)}</span> → ${dot(c.category)}<strong>${esc(c.category)}</strong></span>
+  </li>`).join('');
+  let footer;
+  if (m.status === 'applied') {
+    const n = m.applied ?? rows.length;
+    footer = `<p class="msg ok">Zastosowano ${n} ${plural(n, 'zmianę', 'zmiany', 'zmian')}.</p>`;
+  }
+  else if (m.status === 'rejected') footer = '<p class="muted">Odrzucone.</p>';
+  else {
+    footer = `<button type="button" class="btn" data-action="chat-apply" data-index="${index}">Zastosuj ${rows.length} ${plural(rows.length, 'zmianę', 'zmiany', 'zmian')}</button>
+      <button type="button" class="btn secondary" data-action="chat-reject" data-index="${index}">Odrzuć</button>
+      <p class="muted">${ui.rememberRules ? 'Kategorie zostaną zapamiętane dla tych sklepów (jak w Transakcjach).' : 'Zmienią się tylko te transakcje.'}</p>`;
+  }
+  return `<section class="card changes"><h2>Proponowane zmiany</h2><ul class="change-list">${list}</ul>${footer}</section>`;
+}
+
 function czatView() {
   const header = '<header><span class="eyebrow">Asystent</span><h1>Czat o wydatkach</h1></header>';
   if (!state.settings.chatEnabled) {
@@ -504,8 +541,9 @@ function czatView() {
   const options = [1, 3, 6, 12].map(
     (m) => `<option value="${m}" ${state.settings.chatMonths === m ? 'selected' : ''}>${m === 1 ? 'ostatni miesiąc' : `ostatnie ${m} mies.`}</option>`
   ).join('');
-  const bubbles = ui.chat.map((m) =>
-    `<div class="bubble ${m.role}">${m.role === 'assistant' ? formatReply(m.content) : esc(m.content)}</div>`).join('');
+  const bubbles = ui.chat.map((m, i) =>
+    `<div class="bubble ${m.role}">${m.role === 'assistant' ? formatReply(m.content) : esc(m.content)}</div>${
+      m.changes ? changesCard(m, i) : ''}`).join('');
   const chips = ui.chat.length ? '' : `<div class="chips">${SUGGESTIONS.map(
     (q) => `<button type="button" class="chip" data-action="chat-suggest" data-text="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
   return `${header}
@@ -619,6 +657,22 @@ app.addEventListener('click', (e) => {
     render();
   }
   if (action === 'chat-suggest') sendChat(el.dataset.text);
+  if (action === 'chat-apply' || action === 'chat-reject') {
+    const index = Number(el.dataset.index);
+    const m = ui.chat[index];
+    if (m?.changes && m.status === 'pending') {
+      if (action === 'chat-apply') {
+        const { state: next, applied } = applyChatChanges(state, m.changes, ui.rememberRules);
+        state = next;
+        if (!persist()) return render();
+        ui.chat[index] = { ...m, status: 'applied', applied };
+      } else {
+        ui.chat[index] = { ...m, status: 'rejected' };
+      }
+      saveChat(window.localStorage, ui.chat);
+      render();
+    }
+  }
   if (action === 'chat-clear') {
     ui.chat = [];
     ui.chatError = null;

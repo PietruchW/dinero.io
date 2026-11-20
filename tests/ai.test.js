@@ -128,3 +128,76 @@ test('requestChat i historia czatu', async () => {
   assert.equal(loadChat(storage).length, 30);
   assert.deepEqual(loadChat({ getItem: () => '{zepsute' }), []);
 });
+
+test('czat: numery transakcji w kontekście, mapa zostaje w telefonie; oszczędności widoczne', async () => {
+  const { buildChatContext } = await import('../src/ai.js');
+  const state = stateWith([...tx, { id: '9', date: '2026-11-08', amount: -500, name: 'okx blik', title: '' }]);
+  const { refs, ...context } = buildChatContext(state, 1, '2026-11-19');
+  assert.ok(context.transactions.every((t) => t.length === 5 && /^t\d+$/.test(t[4])));
+  assert.equal(Object.keys(refs).length, context.transactions.length);
+  const okx = context.transactions.find((t) => t[2] === 'okx blik');
+  assert.equal(okx[3], 'Oszczędności i inwestycje');
+  assert.equal(refs[okx[4]], '9');
+  assert.equal(context.summary['2026-11'].saved, 500);
+  assert.ok(!JSON.stringify(context).includes('"refs"'));
+});
+
+test('czat: odczyt propozycji zmian – tylko poprawne, reszta odrzucona', async () => {
+  const { parseChatReply } = await import('../src/ai.js');
+  const state = stateWith(tx);
+  const refs = { t1: '1', t2: '2', t4: '4', t6: '6' };
+  const reply = `Proponuję:\n- Zdunek → Jedzenie\n<zmiany>[
+    {"ref":"t1","kategoria":"Jedzenie"},
+    {"ref":"t1","kategoria":"Zakupy"},
+    {"ref":"t4","kategoria":"Jedzenie"},
+    {"ref":"t6","kategoria":"Wymyślona"},
+    {"ref":"t99","kategoria":"Jedzenie"},
+    {"ref":"constructor","kategoria":"Jedzenie"},
+    {"ref":"t2","category":"Edukacja"}
+  ]</zmiany>`;
+  const { text, changes } = parseChatReply(reply, refs, state);
+  assert.equal(text, 'Proponuję:\n- Zdunek → Jedzenie');
+  // t4 (LIDL) już jest w Jedzeniu – bez zmiany; t6 – nieznana kategoria; t99 – nie ma takiego numeru.
+  assert.deepEqual(changes, [{ id: '1', category: 'Jedzenie' }, { id: '2', category: 'Edukacja' }]);
+  assert.deepEqual(parseChatReply('Bez zmian.', refs, state), { text: 'Bez zmian.', changes: [] });
+  // Uszkodzony lub ucięty blok nie psuje odpowiedzi i nie daje zmian.
+  assert.deepEqual(parseChatReply('Tekst <zmiany>[{"ref":"t1",', refs, state), { text: 'Tekst', changes: [] });
+  assert.deepEqual(parseChatReply('Tekst <zmiany>nie json</zmiany>', refs, state), { text: 'Tekst', changes: [] });
+});
+
+test('czat: zastosowanie zmian jak ręczna zmiana kategorii', async () => {
+  const { applyChatChanges } = await import('../src/ai.js');
+  const state = stateWith(tx);
+  const { state: next, applied } = applyChatChanges(state,
+    [{ id: '1', category: 'Jedzenie' }, { id: 'nie-ma', category: 'Jedzenie' }], true);
+  assert.equal(applied, 1);
+  const by = Object.fromEntries(next.transactions.map((t) => [t.id, t]));
+  assert.equal(by['1'].category, 'Jedzenie');
+  assert.equal(by['1'].manual, true);
+  // Z zapamiętaniem – drugi zakup w tym samym sklepie też.
+  assert.equal(by['2'].category, 'Jedzenie');
+  assert.equal(next.rules['zdunek mamuszki'], 'Jedzenie');
+});
+
+test('czat: propozycje zostają w telefonie – do AI idzie tylko rola i treść; historia je pamięta', async () => {
+  const { requestChat, loadChat, saveChat } = await import('../src/ai.js');
+  let sent;
+  const fake = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response('{"reply":"ok"}', { status: 200 });
+  };
+  const history = [
+    { role: 'user', content: 'Przypisz' },
+    { role: 'assistant', content: 'Proponuję', changes: [{ id: '1', category: 'Jedzenie' }], status: 'pending' },
+    { role: 'user', content: 'Dzięki' }
+  ];
+  await requestChat('https://ai.example', 'k', history, {}, fake);
+  assert.deepEqual(sent.messages[1], { role: 'assistant', content: 'Proponuję' });
+  const data = {};
+  const storage = { getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v; } };
+  saveChat(storage, [...history.slice(0, 2), { role: 'assistant', content: 'x', changes: [{ id: 1, category: 'Zła' }] }]);
+  const loaded = loadChat(storage);
+  assert.deepEqual(loaded[1].changes, [{ id: '1', category: 'Jedzenie' }]);
+  assert.equal(loaded[1].status, 'pending');
+  assert.equal(loaded[2].changes, undefined);
+});

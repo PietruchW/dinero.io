@@ -427,3 +427,21 @@ test('zatwierdzenie kategorii bez zmiany: zdejmuje „do sprawdzenia”', () => 
   // Reguła „Inne” od użytkowniczki: następne zakupy w tym sklepie bez sprawdzania.
   assert.deepEqual(categorize({ name: 'ACME TEST', amount: -5 }, state.rules), { category: 'Inne', needsReview: false, source: 'user' });
 });
+
+test('Edukacja i Oszczędności: słowa kluczowe; oszczędności poza wydatkami i wpływami', () => {
+  const cat = (name, amount) => categorize({ name, title: '', amount }).category;
+  assert.equal(cat('Szkoła Języka Hiszpańskiego', -330), 'Edukacja');
+  assert.equal(cat('okx blik', -500), 'Oszczędności i inwestycje');
+  assert.equal(cat('www.binance', -1000), 'Oszczędności i inwestycje');
+  assert.equal(cat('BINANCE', 800), 'Oszczędności i inwestycje');
+  assert.equal(cat('IKEA', -200), 'Zakupy');
+  const t = (id, amount, name) => ({ id, date: '2026-11-05', amount, name, title: '', currency: 'PLN' });
+  const state = mergeTransactions(emptyState(), [t('a', -500, 'okx blik'), t('b', -1000, 'www.binance'),
+    t('c', 300, 'BINANCE'), t('d', -100, 'LIDL'), t('e', 5000, 'PRACODAWCA')]).state;
+  const s = monthSummary(state, '2026-11');
+  assert.equal(s.spent, 100);
+  assert.equal(s.income, 5000);
+  assert.equal(s.saved, 1200);
+  assert.ok(!EXPENSE_CATEGORIES.includes('Oszczędności i inwestycje'));
+  assert.ok(EXPENSE_CATEGORIES.includes('Edukacja'));
+});

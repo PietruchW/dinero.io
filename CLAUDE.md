@@ -72,6 +72,8 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 
 1. ✅ Fundament: import CSV, kategorie, zapis lokalny, kopia zapasowa, PWA.
 2. Ekrany wg makiety: ✅ pierścień „ile z wpływów wydano” (miesiąc kalendarzowy – wypłata do 10.),
+   ✅ kategorie „Edukacja” (wydatek) i „Oszczędności i inwestycje” (neutralna jak przelewy własne –
+   giełdy krypto, maklerskie; osobna suma `saved` na pulpicie),
    ✅ limity per kategoria (`state.budgets`, ustawia je sama użytkowniczka; przy filtrze konta ukryte,
    bo liczone dla wszystkich kont), cele oszczędnościowe, dopracowany wygląd.
 3. AI: ✅ podpowiedzi kategorii. Worker: `https://dinero-ai.w-pietraszewski.workers.dev`
@@ -79,6 +81,8 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
    scaleniu do `main`). ✅ Czat o wydatkach (`/chat`, zakładka Czat, domyślnie wyłączony,
    wymaga zgody i kodu dostępu; do AI idą transakcje z wybranego okresu bez przelewów
    własnych, bez tytułów, a przelewy bez nazwy odbiorcy; historia tylko w telefonie
-   pod `dinero.chat.v1`, poza kopią zapasową).
+   pod `dinero.chat.v1`, poza kopią zapasową). ✅ Czat proponuje zmiany kategorii: transakcje w kontekście
+   mają numery „t1…” (mapa na id zostaje w telefonie), czat dopisuje blok `<zmiany>[…]</zmiany>`,
+   aplikacja go sprawdza (`parseChatReply`) i pokazuje „Zastosuj” – nic nie zmienia się bez zatwierdzenia.
    Zasady: do AI idą tylko nazwa sklepu i kwota (bez przelewów do osób), klucz API
    wyłącznie jako sekret w Workerze, aplikacja musi działać bez AI.

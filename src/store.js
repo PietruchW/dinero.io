@@ -1,7 +1,7 @@
 // Stan aplikacji i jego zapis. Dane leżą wyłącznie w pamięci przeglądarki
 // na urządzeniu użytkowniczki (localStorage). Nic nie jest wysyłane.
 
-import { categorize, ruleKey, isOwner, CATEGORIES, NEUTRAL } from './categorize.js';
+import { categorize, ruleKey, isOwner, CATEGORIES, NEUTRAL, SAVINGS } from './categorize.js';
 import { normalize } from './detect.js';
 
 export const STORAGE_KEY = 'dinero.v1';
@@ -305,8 +305,14 @@ export function monthSummary(state, month) {
   const byCategory = {};
   let income = 0;
   let neutral = 0;
+  let saved = 0;
   for (const t of state.transactions) {
     if (!t.date.startsWith(month)) continue;
+    if (t.category === SAVINGS) {
+      // Wpłata na giełdę/inwestycje to odłożone pieniądze (plus), wypłata – minus.
+      saved -= t.amount;
+      continue;
+    }
     if (NEUTRAL.has(t.category)) {
       neutral += Math.abs(t.amount);
       continue;
@@ -319,7 +325,10 @@ export function monthSummary(state, month) {
   }
   for (const k of Object.keys(byCategory)) byCategory[k] = Math.round(byCategory[k] * 100) / 100;
   const spent = Math.round(Object.values(byCategory).reduce((a, b) => a + b, 0) * 100) / 100;
-  return { month, byCategory, spent, income: Math.round(income * 100) / 100, neutral: Math.round(neutral * 100) / 100 };
+  return {
+    month, byCategory, spent, income: Math.round(income * 100) / 100,
+    neutral: Math.round(neutral * 100) / 100, saved: Math.round(saved * 100) / 100
+  };
 }
 
 /**

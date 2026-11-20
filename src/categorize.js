@@ -10,18 +10,23 @@ export const CATEGORIES = [
   'Transport',
   'Podróże',
   'Kosmetyki i zdrowie',
+  'Edukacja',
   'Rachunki',
   'Podatki i ZUS',
   'Długi',
   'Subskrypcje',
   'Inne',
   'Przelewy własne',
+  'Oszczędności i inwestycje',
   'Przychód'
 ];
 
-// Kategorie, które nie są ani wydatkiem, ani wpływem (pieniądze tylko
-// przechodzą między własnymi kontami).
-export const NEUTRAL = new Set(['Przelewy własne']);
+/** Pieniądze odłożone lub zainwestowane – widoczne, ale nie są wydatkiem. */
+export const SAVINGS = 'Oszczędności i inwestycje';
+
+// Kategorie, które nie są ani wydatkiem, ani wpływem: pieniądze przechodzą
+// między własnymi kontami albo są odkładane (giełda krypto, maklerskie).
+export const NEUTRAL = new Set(['Przelewy własne', 'Oszczędności i inwestycje']);
 
 // Opisy, którymi banki oznaczają przelew między własnymi rachunkami.
 const OWN_TRANSFER = ['przelew wlasny', 'przelew wewnetrzny', 'przelew miedzy rachunkami', 'przelew miedzy wlasnymi',
@@ -38,6 +43,11 @@ const KEYWORDS = [
     'provident', 'vivus', 'wonga',
     'smartney', 'ferratum', 'zaplo', 'netcredit', 'net credit', 'filarum', 'lendon', 'cofidis', 'santander consumer',
     'inbank', 'kredyt hipoteczny', 'rata hipoteczna']],
+  // Wpłaty i wypłaty z giełd i kont inwestycyjnych – obie strony neutralne.
+  ['Oszczędności i inwestycje', ['binance', 'okx', 'bybit', 'kraken', 'coinbase', 'zondacrypto', 'zonda crypto',
+    'bitpanda', 'kanga exchange', 'xtb', 'dom maklerski', 'obligacj']],
+  ['Edukacja', ['szkola jezyk', 'szkola jezykow', 'kurs ', 'kursy ', 'udemy', 'coursera', 'duolingo', 'babbel',
+    'berlitz', 'british council', 'czesne', 'korepetycj', 'uczelni', 'uniwersytet', 'politechnik']],
   ['Wyjścia', ['uber eats', 'pyszne', 'glovo', 'wolt', 'bolt food', 'mcdonald', 'kfc', 'burger king', 'starbucks',
     'costa coffee', 'restauracja', 'pizz', 'sushi', 'kebab', 'kawiarnia', 'cafe', 'bistro', 'pub ', 'helios',
     'multikino', 'cinema city', 'ebilet']],
