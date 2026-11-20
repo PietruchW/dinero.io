@@ -415,3 +415,15 @@ test('reguły osobno dla wydatków i wpływów; AI tylko dla wydatków', () => {
   const old = recategorize({ ...state, rules: { 'firma klient': 'Inne' } });
   assert.equal(old.transactions.find((t) => t.id === 'fv2').category, 'Przychód');
 });
+
+test('zatwierdzenie kategorii bez zmiany: zdejmuje „do sprawdzenia”', () => {
+  const tx = (id, name) => ({ id, date: '2026-11-05', amount: -42, name, title: '', currency: 'PLN',
+    category: 'Inne', needsReview: true, source: 'default', manual: false });
+  let state = { ...emptyState(), transactions: [tx('a', 'ACME TEST'), tx('b', 'ACME TEST'), tx('c', 'INNY')] };
+  state = setCategory(state, 'a', 'Inne', true);
+  const by = Object.fromEntries(state.transactions.map((t) => [t.id, t.needsReview]));
+  assert.deepEqual(by, { a: false, b: false, c: true });
+  assert.equal(state.rules['acme test'], 'Inne');
+  // Reguła „Inne” od użytkowniczki: następne zakupy w tym sklepie bez sprawdzania.
+  assert.deepEqual(categorize({ name: 'ACME TEST', amount: -5 }, state.rules), { category: 'Inne', needsReview: false, source: 'user' });
+});

@@ -175,6 +175,12 @@ select {
 .tx-amount { font-size: 15px; font-weight: 700; white-space: nowrap; }
 .tx-amount.plus { color: var(--good); }
 .review { color: var(--warn); font-size: 12px; font-weight: 600; }
+.confirm-btn {
+  align-self: flex-start; min-height: 36px; padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--bg); font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--ink); cursor: pointer;
+}
+.confirm-btn:active { opacity: 0.6; }
 
 .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; }
 .toggle input { width: 22px; height: 22px; accent-color: var(--accent); }

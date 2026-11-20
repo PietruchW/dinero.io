@@ -357,7 +357,8 @@ function transakcjeView() {
             <span class="tx-name">${esc(t.name || '(bez nazwy)')}</span>
             ${showAccount && t.account ? `<span class="tx-account">${esc(t.account)}</span>` : ''}
             ${categorySelect(t)}
-            ${t.needsReview ? '<span class="review">Do sprawdzenia</span>' : ''}
+            ${t.needsReview ? `<span class="review">Do sprawdzenia</span>
+              <button type="button" class="confirm-btn" data-action="confirm-category" data-id="${esc(t.id)}">Zostaw „${esc(t.category)}”</button>` : ''}
             ${t.source === 'ai' && !t.needsReview ? '<span class="ai-tag">Przypisane przez AI</span>' : ''}
             ${t.source === 'ai' && t.needsReview ? '<span class="ai-tag">AI nie rozpoznało – wybierz kategorię</span>' : ''}
           </div>
@@ -553,6 +554,15 @@ app.addEventListener('click', (e) => {
   if (!el) return;
   const action = el.dataset.action;
   if (action === 'go') go(el.dataset.view);
+  if (action === 'confirm-category') {
+    // Wybranie z listy tej samej kategorii nie wywołuje zmiany – stąd przycisk.
+    const tx = state.transactions.find((t) => t.id === el.dataset.id);
+    if (tx) {
+      state = setCategory(state, tx.id, tx.category, ui.rememberRules);
+      persist();
+      render();
+    }
+  }
   if (action === 'show-category') {
     ui.category = el.dataset.category;
     ui.onlyReview = false;
