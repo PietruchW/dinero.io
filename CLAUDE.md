@@ -30,11 +30,15 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
   ID z surowych danych (`data|kwota|kontrahent|tytuł`, plus klucz konta, gdy jest) –
   bez konta ID musi zostać takie jak dotąd (test z zapisanymi ID).
 - `src/importer.js` – `readFile(bytes, label?)` (CSV lub .xlsx), `analyzeRows` przy zmianie mapowania
-  lub nazwy konta. Konto: nazwa wpisana przy imporcie i/lub kolumna „Produkt”.
+  lub nazwy konta. Konto: nazwa wpisana przy imporcie i/lub kolumna „Produkt”. Wyświetlana nazwa
+  konta idzie po numerze rachunku („BNP •5424” – karta i konto z tym samym numerem to jedno konto),
+  a klucz do ID dalej z nazwy produktu + numeru (zgodność ze starszymi importami).
 - `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”,
   przelewy własne (po opisie lub imieniu i nazwisku właścicielki; nie liczą się do sum).
 - `src/store.js` – stan, zapis, scalanie importów bez duplikatów (także po starym ID sprzed kont –
-  wtedy tylko dopisuje konto), filtr kont, podsumowania, kopia zapasowa.
+  wtedy tylko dopisuje konto; transakcje zachowują stare ID na zawsze), filtr kont (z pozycją
+  „Bez nazwy konta”), podsumowania, kopia zapasowa. Przy wczytaniu stare nazwy kont BNP
+  „X · Produkt •1234” → „X •1234”.
 - `src/app.js` – UI (renderowanie stringów + delegacja zdarzeń). Jedyny plik z DOM.
 - `src/ai.js`, `src/config.js` – podpowiedzi kategorii z AI (opcjonalne, domyślnie wyłączone);
   `AI_URL` pusty = funkcja ukryta. Wyniki zapisywane jako reguły per sklep (`aiRules`).

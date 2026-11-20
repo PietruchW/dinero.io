@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { decodeBytes, detectDelimiter, parseCsv } from '../src/csv.js';
 import { parseAmount, parseDate, findHeaderRow, detectColumns, toTransactions } from '../src/detect.js';
 import { readStatement, readFile } from '../src/importer.js';
-import { cleanParty, accountLabel, scrubNumbers, cardMerchant } from '../src/detect.js';
+import { cleanParty, accountLabel, accountDisplay, scrubNumbers, cardMerchant } from '../src/detect.js';
 import { isZip, isLegacyXls } from '../src/xlsx.js';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -149,7 +149,7 @@ test('wyciąg BNP (.xlsx): kolumny, konta, kontrahenci, odrzucone', async () => 
       sender: r.mapping.sender, account: r.mapping.account, status: r.mapping.status, type: r.mapping.type },
     { date: 0, amount: 3, name: 6, title: 7, sender: 5, account: 8, status: 12, type: 9 }
   );
-  assert.deepEqual(r.accounts, ['Konto Osobiste •0001', 'Konto Oszczędnościowe •0002']);
+  assert.deepEqual(r.accounts, ['Rachunek •0001', 'Rachunek •0002']);
   const txs = r.transactions;
   // Odrzucona płatność nie wchodzi.
   assert.equal(txs.length, 9);
@@ -186,4 +186,20 @@ test('xlsx: wspólna tablica tekstów, formatowanie, encje, style dat, arkusz o 
     ['2026-11-01', '12', 'Inline'],
     []
   ]);
+});
+
+test('konto po numerze: karta i konto z tym samym numerem to jedno konto', () => {
+  assert.equal(accountDisplay('BNP', 'Konto Osobiste\n11111111111111111111115424'), 'BNP •5424');
+  assert.equal(accountDisplay('BNP', 'Karta Otwarta na Dzisiaj\n11111111111111111111115424'), 'BNP •5424');
+  assert.equal(accountDisplay('BNP', '11111111111111111111115424'), 'BNP •5424');
+  assert.equal(accountDisplay('', 'Konto Osobiste\n11111111111111111111115424'), 'Rachunek •5424');
+  assert.equal(accountDisplay('ING', ''), 'ING');
+  assert.equal(accountDisplay('BNP', 'Konto Osobiste'), 'BNP · Konto Osobiste');
+});
+
+test('ID z pliku BNP są stałe (zmiana = duplikaty u użytkowniczki)', async () => {
+  const r = await readFile(fixture('bnp-like.xlsx'), 'BNP');
+  assert.deepEqual(r.transactions.map((t) => t.id),
+    ['zeb71j', '1eh588c', '1woxh9u', '1ge0klb', 'a44mif', 'u6h15s', '18tgpz', '7re6e9', '1mt5mgt']);
+  assert.deepEqual(r.accounts, ['BNP •0001', 'BNP •0002']);
 });

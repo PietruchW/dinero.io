@@ -2,6 +2,7 @@
 // na urządzeniu użytkowniczki (localStorage). Nic nie jest wysyłane.
 
 import { categorize, merchantKey, CATEGORIES, NEUTRAL } from './categorize.js';
+import { normalize } from './detect.js';
 
 export const STORAGE_KEY = 'dinero.v1';
 
@@ -46,7 +47,7 @@ function validateState(data) {
   if (!data.transactions.every(txOk)) throw new Error('Nieprawidłowe transakcje');
   return {
     version: VERSION,
-    transactions: data.transactions,
+    transactions: data.transactions.map(fixAccountName),
     rules: data.rules && typeof data.rules === 'object' ? data.rules : {},
     // Pola dodane po pierwszej wersji – stare zapisy ich nie mają.
     aiRules: cleanRules(data.aiRules),
@@ -62,6 +63,16 @@ function validateState(data) {
       chatMonths: [1, 3, 6, 12].includes(data.settings?.chatMonths) ? data.settings.chatMonths : 3
     }
   };
+}
+
+/**
+ * Nazwy kont z pierwszej wersji importu BNP („BNP · Konto Osobiste •5424”,
+ * „BNP · Karta Otwarta na Dzisiaj •5424”) → jedno konto „BNP •5424”.
+ * Zmienia tylko podpis; identyfikatory zostają.
+ */
+function fixAccountName(t) {
+  const m = typeof t.account === 'string' ? t.account.match(/^(.+?) · .+ •(\d{4})$/) : null;
+  return m ? { ...t, account: `${m[1]} •${m[2]}` } : t;
 }
 
 /** Limity: tylko kategorie wydatków i dodatnie kwoty – reszta jest pomijana. */
@@ -90,11 +101,13 @@ function ownerNames(state) {
  * pomija – można bezpiecznie wczytać zachodzące na siebie wyciągi.
  * Transakcja wczytana wcześniej bez konta (stary identyfikator) też jest
  * duplikatem – dostaje wtedy tylko nazwę konta.
- * @returns {{state: object, added: number, duplicates: number}}
+ * @returns {{state: object, added: number, duplicates: number, named: number}}
  */
 export function mergeTransactions(state, incoming) {
   const known = new Set(state.transactions.map((t) => t.id));
-  const legacy = new Map(state.transactions.filter((t) => !t.account).map((t) => [t.id, t]));
+  // Transakcje po starym ID: wczytane bez konta albo takie, które dostały
+  // konto przy wcześniejszym ponownym imporcie (zachowują stare ID).
+  const legacy = new Map(state.transactions.map((t) => [t.id, t]));
   const adopt = new Map();
   const fresh = [];
   let duplicates = 0;
@@ -103,8 +116,10 @@ export function mergeTransactions(state, incoming) {
       duplicates += 1;
       continue;
     }
-    if (legacyId && legacy.has(legacyId) && !adopt.has(legacyId)) {
-      adopt.set(legacyId, tx.account);
+    const old = legacyId ? legacy.get(legacyId) : null;
+    if (old && !adopt.has(legacyId) && (!old.account || normalize(old.account) === normalize(tx.account))) {
+      // Bez konta – dopisujemy je; z tym samym kontem – zwykły duplikat.
+      adopt.set(legacyId, old.account ? null : tx.account);
       duplicates += 1;
       continue;
     }
@@ -118,7 +133,16 @@ export function mergeTransactions(state, incoming) {
   const transactions = [...existing, ...fresh].sort((a, b) =>
     a.date === b.date ? 0 : a.date < b.date ? 1 : -1
   );
-  return { state: { ...state, transactions }, added: fresh.length, duplicates };
+  const named = [...adopt.values()].filter(Boolean).length;
+  return { state: { ...state, transactions }, added: fresh.length, duplicates: duplicates - named, named };
+}
+
+/** Wartość filtra dla transakcji wczytanych bez nazwy konta. */
+export const NO_ACCOUNT = '__bez-konta__';
+
+/** Czy są transakcje bez nazwy konta (wczytane przed dodaniem kont). */
+export function hasUnnamedAccount(state) {
+  return state.transactions.some((t) => !t.account);
 }
 
 /** Nazwy kont występujące w danych, alfabetycznie. */
@@ -132,6 +156,7 @@ export function accounts(state) {
  */
 export function forAccount(state, account) {
   if (!account) return state;
+  if (account === NO_ACCOUNT) return { ...state, transactions: state.transactions.filter((t) => !t.account) };
   return { ...state, transactions: state.transactions.filter((t) => t.account === account) };
 }
 

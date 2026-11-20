@@ -6,7 +6,7 @@ import { categorize, merchantKey } from '../src/categorize.js';
 import {
   emptyState, mergeTransactions, setCategory, monthSummary, months,
   loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize, accounts, forAccount,
-  spendingRatio, setBudgets, budgetRows, averageSpending, EXPENSE_CATEGORIES
+  spendingRatio, setBudgets, budgetRows, averageSpending, EXPENSE_CATEGORIES, NO_ACCOUNT, hasUnnamedAccount
 } from '../src/store.js';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -182,9 +182,9 @@ test('wyciąg z dwóch kont w jednym pliku: przelew między nimi jest neutralny'
   assert.ok(state.transactions.every((t) => t.legacyId === undefined));
   const own = state.transactions.filter((t) => t.category === 'Przelewy własne');
   assert.equal(own.length, 2);
-  assert.deepEqual(accounts(state), ['Konto Osobiste •0001', 'Konto Oszczędnościowe •0002']);
-  const savings = forAccount(state, 'Konto Oszczędnościowe •0002');
-  assert.ok(savings.transactions.every((t) => t.account === 'Konto Oszczędnościowe •0002'));
+  assert.deepEqual(accounts(state), ['Rachunek •0001', 'Rachunek •0002']);
+  const savings = forAccount(state, 'Rachunek •0002');
+  assert.ok(savings.transactions.every((t) => t.account === 'Rachunek •0002'));
   assert.equal(monthSummary(savings, '2026-10').spent, 23.5);
   assert.equal(forAccount(state, null), state);
 });
@@ -192,9 +192,16 @@ test('wyciąg z dwóch kont w jednym pliku: przelew między nimi jest neutralny'
 test('ponowny import z nazwą konta: bez duplikatów, stare transakcje dostają konto', () => {
   const before = mergeTransactions(emptyState(), readStatement(fixture('ing-like-cp1250.csv')).transactions).state;
   const ing = readStatement(fixture('ing-like-cp1250.csv'), undefined, 'ING').transactions;
-  const { state, added, duplicates } = mergeTransactions(before, ing);
+  const { state, added, duplicates, named } = mergeTransactions(before, ing);
   assert.equal(added, 0);
-  assert.equal(duplicates, ing.length);
+  assert.equal(named, ing.length);
+  assert.equal(duplicates, 0);
+  // Drugi raz to już zwykłe duplikaty.
+  const again = mergeTransactions(state, ing);
+  assert.deepEqual([again.added, again.named, again.duplicates], [0, 0, ing.length]);
+  // Ta sama nazwa inną wielkością liter – też bez duplikatów.
+  const lower = mergeTransactions(state, readStatement(fixture('ing-like-cp1250.csv'), undefined, 'ing').transactions);
+  assert.deepEqual([lower.added, lower.duplicates], [0, ing.length]);
   assert.ok(state.transactions.every((t) => t.account === 'ING'));
   // Identyfikatory zostają stare – reguły i ręczne kategorie dalej pasują.
   assert.deepEqual(state.transactions.map((t) => t.id).sort(), before.transactions.map((t) => t.id).sort());
@@ -262,4 +269,32 @@ test('averageSpending: średnia z pełnych miesięcy przed wybranym', () => {
   ] };
   assert.deepEqual(averageSpending(state, '2026-11'), { 'Jedzenie': 400, 'Wyjścia': 30 });
   assert.deepEqual(averageSpending(state, '2026-07'), {});
+});
+
+test('stare nazwy kont BNP z telefonu łączą się w jedno konto, ID bez zmian', () => {
+  const storage = memoryStorage();
+  const tx = (id, account) =>
+    ({ id, date: '2026-10-01', amount: -1, name: 'X', title: '', currency: 'PLN', category: 'Inne',
+      needsReview: false, source: 'default', manual: false, ...(account ? { account } : {}) });
+  saveState(storage, { ...emptyState(), transactions: [
+    tx('a', 'BNP · Konto Osobiste •5424'), tx('b', 'BNP · Karta Otwarta na Dzisiaj •5424'),
+    tx('c', 'BNP · Rachunek •5424'), tx('d', 'ING'), tx('e', 'BNP •5424'), tx('f')
+  ] });
+  const loaded = loadState(storage);
+  assert.deepEqual(loaded.transactions.map((t) => t.account),
+    ['BNP •5424', 'BNP •5424', 'BNP •5424', 'ING', 'BNP •5424', undefined]);
+  assert.deepEqual(loaded.transactions.map((t) => t.id), ['a', 'b', 'c', 'd', 'e', 'f']);
+  // Ponowne wczytanie nic już nie zmienia.
+  saveState(storage, loaded);
+  assert.deepEqual(loadState(storage), loaded);
+});
+
+test('filtr „Bez nazwy konta”: transakcje wczytane przed dodaniem kont', () => {
+  const plain = mergeTransactions(emptyState(), readStatement(fixture('ing-like-cp1250.csv')).transactions).state;
+  assert.ok(hasUnnamedAccount(plain));
+  const named = mergeTransactions(plain, readStatement(fixture('no-header-utf8.csv'), undefined, 'Wspólne').transactions).state;
+  const none = forAccount(named, NO_ACCOUNT);
+  assert.equal(none.transactions.length, plain.transactions.length);
+  assert.ok(none.transactions.every((t) => !t.account));
+  assert.deepEqual(accounts(named), ['Wspólne']);
 });
