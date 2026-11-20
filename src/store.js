@@ -4,6 +4,9 @@
 import { categorize, merchantKey, CATEGORIES, NEUTRAL } from './categorize.js';
 
 export const STORAGE_KEY = 'dinero.v1';
+
+/** Kategorie, którym można ustawić limit (bez wpływów i przelewów własnych). */
+export const EXPENSE_CATEGORIES = CATEGORIES.filter((c) => c !== 'Przychód' && !NEUTRAL.has(c));
 const VERSION = 1;
 
 export function emptyState() {
@@ -47,7 +50,7 @@ function validateState(data) {
     rules: data.rules && typeof data.rules === 'object' ? data.rules : {},
     // Pola dodane po pierwszej wersji – stare zapisy ich nie mają.
     aiRules: cleanRules(data.aiRules),
-    budgets: data.budgets && typeof data.budgets === 'object' ? data.budgets : {},
+    budgets: cleanBudgets(data.budgets),
     goals: Array.isArray(data.goals) ? data.goals : [],
     settings: {
       ownerNames: Array.isArray(data.settings?.ownerNames)
@@ -59,6 +62,16 @@ function validateState(data) {
       chatMonths: [1, 3, 6, 12].includes(data.settings?.chatMonths) ? data.settings.chatMonths : 3
     }
   };
+}
+
+/** Limity: tylko kategorie wydatków i dodatnie kwoty – reszta jest pomijana. */
+function cleanBudgets(budgets) {
+  if (!budgets || typeof budgets !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(budgets).filter(
+      ([k, v]) => EXPENSE_CATEGORIES.includes(k) && typeof v === 'number' && Number.isFinite(v) && v > 0
+    )
+  );
 }
 
 function cleanRules(rules) {
@@ -164,6 +177,68 @@ export function setChatSettings(state, { enabled, months }) {
   if (enabled !== undefined) settings.chatEnabled = enabled === true;
   if ([1, 3, 6, 12].includes(months)) settings.chatMonths = months;
   return { ...state, settings };
+}
+
+/**
+ * Ustawia miesięczne limity kategorii. Pusta, zerowa lub ujemna kwota
+ * usuwa limit. Kwoty zaokrąglone do groszy.
+ * @param {Record<string, number|null>} limits kategoria → kwota
+ */
+export function setBudgets(state, limits) {
+  const budgets = { ...state.budgets };
+  for (const [category, value] of Object.entries(limits)) {
+    if (!EXPENSE_CATEGORIES.includes(category)) continue;
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      budgets[category] = Math.round(value * 100) / 100;
+    } else {
+      delete budgets[category];
+    }
+  }
+  return { ...state, budgets };
+}
+
+/**
+ * Wiersze kategorii na pulpit: wydane, limit i stopień jego wykorzystania.
+ * Kategorie z limitem są zawsze (także bez wydatków), pozostałe – gdy coś wydano.
+ * Kolejność: od największych wydatków.
+ * @param {{byCategory: Record<string, number>}} summary wynik monthSummary
+ * @param {Record<string, number>} budgets
+ */
+export function budgetRows(summary, budgets = {}) {
+  const names = new Set([
+    ...Object.keys(summary.byCategory).filter((c) => summary.byCategory[c] > 0),
+    ...Object.keys(budgets).filter((c) => budgets[c] > 0)
+  ]);
+  return [...names]
+    .map((category) => {
+      const spent = Math.max(0, summary.byCategory[category] ?? 0);
+      const limit = budgets[category] ?? null;
+      if (!limit) return { category, spent, limit: null, ratio: null, left: null, level: null };
+      const ratio = spent / limit;
+      return {
+        category, spent, limit, ratio,
+        left: Math.round((limit - spent) * 100) / 100,
+        level: ratio > 1 ? 'over' : ratio >= 0.8 ? 'warn' : 'ok'
+      };
+    })
+    .sort((a, b) => b.spent - a.spent || (b.limit ?? 0) - (a.limit ?? 0));
+}
+
+/**
+ * Średnie miesięczne wydatki w kategoriach z `count` pełnych miesięcy przed
+ * podanym (bez niego – bieżący zwykle jest niepełny). Podpowiedź przy limitach.
+ * @returns {Record<string, number>}
+ */
+export function averageSpending(state, month, count = 3) {
+  const prior = months(state).filter((m) => m < month).slice(0, count);
+  if (!prior.length) return {};
+  const totals = {};
+  for (const m of prior) {
+    for (const [c, v] of Object.entries(monthSummary(state, m).byCategory)) {
+      if (v > 0) totals[c] = (totals[c] ?? 0) + v;
+    }
+  }
+  return Object.fromEntries(Object.entries(totals).map(([c, v]) => [c, Math.round(v / prior.length)]));
 }
 
 /** Włącza lub wyłącza podpowiedzi AI. */
