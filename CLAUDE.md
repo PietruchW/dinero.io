@@ -45,8 +45,10 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
 - `worker/` – pośrednik AI na Cloudflare Workers (klucz API jako sekret, kody dostępu
   `APP_TOKENS`, kontrola Origin, limit zapytań). Instrukcja wdrożenia: `worker/README.md`.
   Kod dostępu jest tylko w telefonie (`settings.aiToken`), nigdy w repo ani w kopii zapasowej.
-- `sw.js` – service worker, „najpierw sieć”, offline z pamięci podręcznej.
-  Nowy plik aplikacji = dopisz go do listy `SHELL`.
+- `sw.js` – service worker, „najpierw sieć” (z `cache: 'no-cache'`, żeby nie dostać starego pliku
+  z pamięci przeglądarki), offline z pamięci podręcznej. Nowy plik aplikacji = dopisz go do `SHELL`.
+  Każda zmiana aplikacji = podbij `APP_VERSION` w `src/config.js` i `CACHE` w `sw.js` (ta sama liczba;
+  test `tests/version.test.js` pilnuje zgodności i listy `SHELL`). „Odśwież aplikację” w Ustawieniach.
 
 Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 
