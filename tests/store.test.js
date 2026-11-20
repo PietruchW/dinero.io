@@ -5,7 +5,8 @@ import { readStatement, readFile } from '../src/importer.js';
 import { categorize, merchantKey } from '../src/categorize.js';
 import {
   emptyState, mergeTransactions, setCategory, monthSummary, months,
-  loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize, accounts, forAccount
+  loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize, accounts, forAccount,
+  spendingRatio
 } from '../src/store.js';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -201,4 +202,14 @@ test('ponowny import z nazwą konta: bez duplikatów, stare transakcje dostają 
   const other = mergeTransactions(state, readStatement(fixture('ing-like-cp1250.csv'), undefined, 'Wspólne').transactions);
   assert.equal(other.added, ing.length);
   assert.deepEqual(accounts(other.state), ['ING', 'Wspólne']);
+});
+
+test('pierścień: część wpływów wydana, progi i brak wpływów', () => {
+  assert.equal(spendingRatio({ spent: 500, income: 0 }), null);
+  assert.deepEqual(spendingRatio({ spent: 2160, income: 3000 }), { ratio: 0.72, percent: 72, left: 840, level: 'ok' });
+  assert.equal(spendingRatio({ spent: 2400, income: 3000 }).level, 'warn');
+  const over = spendingRatio({ spent: 3340, income: 3000 });
+  assert.equal(over.level, 'over');
+  assert.equal(over.left, -340);
+  assert.equal(over.percent, 111);
 });

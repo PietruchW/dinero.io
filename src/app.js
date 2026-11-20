@@ -6,7 +6,7 @@ import { CATEGORIES } from './categorize.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
   exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings,
-  accounts, forAccount
+  accounts, forAccount, spendingRatio
 } from './store.js';
 import { AI_URL } from './config.js';
 import {
@@ -185,6 +185,33 @@ function emptyView() {
   </div>`;
 }
 
+/** Pierścień „ile z wpływów wydałaś” i zdanie pod nim. */
+function incomeRing(s, month) {
+  const r = spendingRatio(s);
+  if (!r) {
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return `<p class="hero-note">${month === current
+      ? 'Wypłata jeszcze nie wpłynęła – wtedy zobaczysz, ile z niej zostało.'
+      : 'W tym miesiącu nie było wpływów.'}</p>`;
+  }
+  const radius = 26;
+  const length = 2 * Math.PI * radius;
+  const filled = Math.min(r.ratio, 1) * length;
+  const text = r.level === 'over'
+    ? `Wydałaś o ${money.format(-r.left)} więcej, niż wpłynęło`
+    : `Zostało ${money.format(r.left)} z wpływów`;
+  return `<div class="hero-ring ${r.level}">
+    <svg viewBox="0 0 64 64" role="img" aria-label="Wydano ${r.percent}% wpływów">
+      <circle class="ring-track" cx="32" cy="32" r="${radius}"/>
+      <circle class="ring-fill" cx="32" cy="32" r="${radius}"
+        stroke-dasharray="${filled.toFixed(2)} ${length.toFixed(2)}" transform="rotate(-90 32 32)"/>
+      <text x="32" y="32" dy="0.35em" text-anchor="middle" ${r.percent >= 100 ? 'class="long"' : ''}>${Math.min(r.percent, 999)}%</text>
+    </svg>
+    <span>${esc(text)}</span>
+  </div>`;
+}
+
 function pulpitView() {
   const month = currentMonth();
   if (!month) return `<header><span class="eyebrow">Dinero</span><h1>Pulpit</h1></header>${emptyView()}`;
@@ -204,6 +231,7 @@ function pulpitView() {
     <span class="label">Wydałaś w tym miesiącu</span>
     <span class="big">${esc(money.format(s.spent))}</span>
     <span class="sub">Wpływy: ${esc(money.format(s.income))}</span>
+    ${incomeRing(s, month)}
   </section>
   ${s.neutral ? `<p class="muted">Przelewy między Twoimi kontami (${esc(money.format(s.neutral))}) nie liczą się do wydatków ani wpływów.</p>` : ''}
   ${state.settings.ownerNames.length ? '' : `<section class="card">

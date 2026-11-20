@@ -207,6 +207,23 @@ export function monthSummary(state, month) {
   return { month, byCategory, spent, income: Math.round(income * 100) / 100, neutral: Math.round(neutral * 100) / 100 };
 }
 
+/**
+ * Jaką część wpływów miesiąca już wydano – do pierścienia na pulpicie.
+ * null, gdy w miesiącu nie było wpływów (np. przed wypłatą albo na koncie,
+ * na które nic nie wpływa) – wtedy nie ma z czym porównać.
+ * @param {{spent: number, income: number}} summary wynik monthSummary
+ */
+export function spendingRatio(summary) {
+  if (!(summary.income > 0)) return null;
+  const ratio = summary.spent / summary.income;
+  return {
+    ratio,
+    percent: Math.round(ratio * 100),
+    left: Math.round((summary.income - summary.spent) * 100) / 100,
+    level: ratio > 1 ? 'over' : ratio >= 0.8 ? 'warn' : 'ok'
+  };
+}
+
 /** Miesiące z danymi, od najnowszego. */
 export function months(state) {
   return [...new Set(state.transactions.map((t) => t.date.slice(0, 7)))].sort().reverse();
