@@ -156,3 +156,19 @@ test('worker i aplikacja mają te same kategorie wydatków', () => {
   const app = CATEGORIES.filter((c) => c !== 'Przychód' && c !== 'Przelewy własne');
   assert.deepEqual([...WORKER_CATEGORIES].sort(), [...app].sort());
 });
+
+test('worker /chat: numery transakcji i instrukcja zmian kategorii', async () => {
+  const calls = [];
+  const body = { ...chatBody, context: { ...chatBody.context, transactions: [['2026-11-01', -42, 'Szkoła Języka', 'Inne', 't1']] } };
+  const res = await handle(req(body, { path: '/chat' }), env, fakeClaude('ok', calls));
+  assert.equal(res.status, 200);
+  const sent = JSON.parse(calls[0].init.body);
+  assert.ok(sent.system.includes('"t1"'));
+  assert.ok(sent.system.includes('<zmiany>'));
+  assert.ok(sent.system.includes('Edukacja') && sent.system.includes('Oszczędności i inwestycje'));
+  for (const bad of [['2026-11-01', -1, 'x', 'Inne', 'zły'], ['2026-11-01', -1, 'x', 'Inne', 5]]) {
+    const r = await handle(req({ ...chatBody, context: { ...chatBody.context, transactions: [bad] } }, { path: '/chat' }), env,
+      fakeClaude('ok'));
+    assert.equal(r.status, 400);
+  }
+});
