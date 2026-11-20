@@ -2,7 +2,7 @@
 // online zawsze dostajesz najnowszą wersję z GitHub Pages, offline – kopię
 // z pamięci podręcznej. Dane użytkowniczki nie przechodzą przez ten plik.
 
-const CACHE = 'dinero-shell-v13';
+const CACHE = 'dinero-shell-v14';
 const SHELL = [
   './',
   './index.html',
@@ -38,8 +38,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  // cache: 'no-cache' – zawsze pytamy serwer, czy plik się zmienił (bez tego
+  // przeglądarka mogła do 10 minut podawać starą wersję z własnej pamięci).
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

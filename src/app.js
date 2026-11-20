@@ -9,7 +9,7 @@ import {
   exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings,
   accounts, forAccount, spendingRatio, NO_ACCOUNT, hasUnnamedAccount, EXPENSE_CATEGORIES, setBudgets, budgetRows, averageSpending
 } from './store.js';
-import { AI_URL } from './config.js';
+import { AI_URL, APP_VERSION } from './config.js';
 import {
   selectForAI, applyAIResults, requestCategories, generateAccessCode,
   buildChatContext, requestChat, loadChat, saveChat
@@ -53,7 +53,8 @@ const ui = {
   aiBusy: false,
   chat: loadChat(window.localStorage),
   chatBusy: false,
-  chatError: null
+  chatError: null,
+  refreshing: false
 };
 
 const SUGGESTIONS = [
@@ -458,6 +459,12 @@ function ustawieniaView() {
     <h2>Usuń wszystkie dane</h2>
     <p class="muted">Kasuje transakcje i zapamiętane sklepy z tego telefonu. Tego nie da się cofnąć bez kopii.</p>
     <button type="button" class="btn secondary" data-action="wipe">Usuń dane</button>
+  </section>
+  <section class="card">
+    <h2>Aplikacja</h2>
+    <p class="muted">Wersja ${APP_VERSION}. Odświeżenie pobiera najnowszą wersję aplikacji – Twoje dane zostają nietknięte.</p>
+    <button type="button" class="btn secondary" data-action="refresh-app" ${ui.refreshing ? 'disabled' : ''}>
+      ${ui.refreshing ? 'Sprawdzam…' : 'Odśwież aplikację'}</button>
   </section>`;
 }
 
@@ -567,6 +574,7 @@ app.addEventListener('click', (e) => {
   }
   if (action === 'ai') runAI();
   if (action === 'backup') saveBackup();
+  if (action === 'refresh-app') refreshApp();
   if (action === 'chat-enable') {
     state = setChatSettings(state, { enabled: true });
     persist();
@@ -718,6 +726,22 @@ app.addEventListener('keydown', (e) => {
     sendChat(e.target.value);
   }
 });
+
+/**
+ * Wymusza pobranie najnowszej wersji: sprawdza service worker i przeładowuje
+ * stronę. Dane w localStorage nie są ruszane.
+ */
+async function refreshApp() {
+  ui.refreshing = true;
+  render();
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg) await reg.update();
+  } catch {
+    // Bez sieci update się nie uda – przeładowanie i tak pokaże wersję z pamięci.
+  }
+  window.location.reload();
+}
 
 async function saveBackup() {
   const name = `dinero-kopia-${new Date().toISOString().slice(0, 10)}.json`;
