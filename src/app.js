@@ -200,6 +200,9 @@ function emptyView() {
 /** Pierścień „ile z wpływów wydałaś” i zdanie pod nim. */
 function incomeRing(s, month) {
   const r = spendingRatio(s);
+  if (s.spent < 0) {
+    return `<p class="hero-note">Wpływy zapisane w kategoriach wydatków są większe niż wydatki – sprawdź kategorie poniżej.</p>`;
+  }
   if (!r) {
     const now = new Date();
     const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -218,7 +221,7 @@ function incomeRing(s, month) {
       <circle class="ring-track" cx="32" cy="32" r="${radius}"/>
       <circle class="ring-fill" cx="32" cy="32" r="${radius}"
         stroke-dasharray="${filled.toFixed(2)} ${length.toFixed(2)}" transform="rotate(-90 32 32)"/>
-      <text x="32" y="32" dy="0.35em" text-anchor="middle" ${r.percent >= 100 ? 'class="long"' : ''}>${Math.min(r.percent, 999)}%</text>
+      <text x="32" y="32" dy="0.35em" text-anchor="middle" ${r.percent >= 100 ? 'class="long"' : ''}>${r.percent > 999 ? '999+' : r.percent}%</text>
     </svg>
     <span>${esc(text)}</span>
   </div>`;
@@ -234,6 +237,7 @@ function categoriesCard(s) {
   const max = Math.max(1, ...rows.filter((r) => !r.limit).map((r) => r.spent));
   const over = rows.filter((r) => r.level === 'over').length;
   const hasLimits = Object.keys(state.budgets).length > 0;
+  const minus = Object.entries(s.byCategory).filter(([, v]) => v < 0).sort((a, b) => a[1] - b[1]);
   const row = (r) => {
     if (!r.limit) {
       return `<div class="cat-row">
@@ -259,6 +263,12 @@ function categoriesCard(s) {
     ${filtered && hasLimits ? '<p class="muted">Limity są liczone dla wszystkich kont razem – wybierz „Wszystkie konta”, żeby je zobaczyć.</p>' : ''}
     ${over ? `<p class="limit-alert">${over === 1 ? 'Jedna kategoria jest' : `${over} kategorie są`} ponad limitem.</p>` : ''}
     ${rows.length ? rows.map(row).join('') : '<p class="muted">Brak wydatków w tym miesiącu.</p>'}
+    ${minus.length ? `<div class="minus-cats">
+      <p class="limit-alert">Wpływy w kategoriach wydatków</p>
+      <p class="muted">Te kategorie mają więcej wpływów (zwrotów) niż wydatków. Jeśli to przelewy z Twojego innego konta, zmień ich kategorię na „Przelewy własne”.</p>
+      ${minus.map(([c, v]) => `<div class="cat-top"><span class="cat-name">${dot(c)}${esc(c)}</span>
+        <span class="plus">+${esc(money.format(-v))}</span></div>`).join('')}
+    </div>` : ''}
   </section>`;
 }
 
@@ -302,7 +312,7 @@ function pulpitView() {
   ${filter}
   <section class="hero">
     <span class="label">Wydałaś w tym miesiącu</span>
-    <span class="big">${esc(money.format(s.spent))}</span>
+    <span class="big">${esc(money.format(Math.max(0, s.spent)))}</span>
     <span class="sub">Wpływy: ${esc(money.format(s.income))}</span>
     ${incomeRing(s, month)}
   </section>

@@ -102,6 +102,8 @@ p { margin: 0; line-height: 1.45; }
 .limit-note.warn { color: #9A6416; }
 .limit-note.over { color: var(--warn); font-weight: 600; }
 .limit-alert { margin: 0; color: var(--warn); font-weight: 600; font-size: 14px; }
+.minus-cats { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.minus-cats .plus { color: var(--good); font-weight: 600; }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .link-btn {
   background: none; border: 0; padding: 8px 0; min-height: 44px; font: inherit; font-size: 15px;
