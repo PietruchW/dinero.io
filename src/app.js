@@ -23,6 +23,7 @@ const COLORS = {
   'Podróże': '#2F7FA6',
   'Kosmetyki i zdrowie': '#C57B6A',
   'Rachunki': '#8C7A3D',
+  'Podatki i ZUS': '#5E6B7A',
   'Długi': '#A8483A',
   'Subskrypcje': '#7D6BB3',
   'Inne': '#9A958C',
@@ -557,12 +558,12 @@ app.addEventListener('click', (e) => {
     go('transakcje');
   }
   if (action === 'do-import' && ui.pending) {
-    const { state: next, added, duplicates, named } = mergeTransactions(state, ui.pending.result.transactions);
+    const { state: next, added, duplicates, updated } = mergeTransactions(state, ui.pending.result.transactions);
     state = next;
     if (persist()) {
       ui.message = {
         kind: 'ok',
-        text: `Dodano ${added} transakcji.${named ? ` ${named} wcześniej wczytanych dostało nazwę konta.` : ''}${
+        text: `Dodano ${added} transakcji.${updated ? ` Poprawiono ${updated} wcześniej wczytanych.` : ''}${
           duplicates ? ` Pominięto ${duplicates} już wczytanych.` : ''}`
       };
     }
