@@ -162,11 +162,9 @@ test('kategoria Podróże: linie lotnicze i noclegi, ale nie stacja Lotos', () =
   assert.equal(categorize({ name: 'Airbnb * HMXYZ', amount: -900 }).category, 'Podróże');
 });
 
-test('kategoria Długi: raty, PayPo, odsetki; wpływ z odsetkami to przychód', () => {
+test('kategoria Długi: raty, kredyty, odsetki; wpływ z odsetkami to przychód', () => {
   const cat = (name, amount, title = '') => categorize({ name, title, amount }).category;
-  assert.equal(cat('PAYPO SP. Z O.O.', -200), 'Długi');
-  assert.equal(cat('Klarna AB', -89.9), 'Długi');
-  assert.equal(cat('PayPo', -50, 'Allegro zamówienie 123'), 'Długi');
+  assert.equal(cat('PROVIDENT POLSKA', -300), 'Długi');
   assert.equal(cat('Bank', -312.4, 'Spłata raty kredytu'), 'Długi');
   assert.equal(cat('Odsetki', -120), 'Długi');
   assert.equal(cat('Operacja kredytowa', -1800, 'Kredyt B123 Spłata kapitału wymagalnego'), 'Długi');
@@ -444,4 +442,33 @@ test('Edukacja i Oszczędności: słowa kluczowe; oszczędności poza wydatkami 
   assert.equal(s.saved, 1200);
   assert.ok(!EXPENSE_CATEGORIES.includes('Oszczędności i inwestycje'));
   assert.ok(EXPENSE_CATEGORIES.includes('Edukacja'));
+});
+
+test('pośrednicy płatności (PayPo, PayU, BLIK) to zakupy; sklep z opisu wygrywa', () => {
+  const cat = (name, amount, title = '') => categorize({ name, title, amount }).category;
+  assert.equal(cat('PAYPO SP. Z O.O.', -200), 'Zakupy');
+  assert.equal(cat('Klarna AB', -89.9), 'Zakupy');
+  assert.equal(cat('PayU S.A.', -45), 'Zakupy');
+  assert.equal(cat('P24*INPOST SPOLKA Z OG KRAKOW PL', -260), 'Zakupy');
+  assert.equal(cat('Płatność BLIK w internecie', -59), 'Zakupy');
+  // Sklep w opisie wygrywa z pośrednikiem.
+  assert.equal(cat('PayU S.A.', -62, 'Pyszne.pl zamówienie'), 'Wyjścia');
+  assert.equal(cat('PayPo', -50, 'Zalando zamówienie'), 'Zakupy');
+  assert.equal(cat('PayU', -40, 'NETFLIX'), 'Subskrypcje');
+  // Przelew na telefon BLIK to przelew do osoby, nie zakup.
+  assert.equal(cat('Przelew na telefon BLIK', -100), 'Inne');
+  // Prawdziwe długi dalej w Długach.
+  assert.equal(cat('Bank', -312.4, 'Spłata raty kredytu'), 'Długi');
+});
+
+test('pośrednicy: „Zapamiętaj” nie tworzy reguły; stare reguły i podpowiedzi AI są pomijane', () => {
+  const tx = (id, amount, name) => ({ id, date: '2026-11-05', amount, name, title: '', currency: 'PLN',
+    category: 'Zakupy', needsReview: false, source: 'keyword', manual: false });
+  let state = { ...emptyState(), transactions: [tx('a', -40, 'PayU S.A.'), tx('b', -300, 'PayU S.A.')] };
+  state = setCategory(state, 'a', 'Wyjścia', true);
+  assert.deepEqual(state.rules, {});
+  const by = Object.fromEntries(state.transactions.map((t) => [t.id, t.category]));
+  assert.deepEqual(by, { a: 'Wyjścia', b: 'Zakupy' });
+  const old = recategorize({ ...state, rules: { 'payu': 'Wyjścia' }, aiRules: { 'payu': 'Inne' } });
+  assert.equal(old.transactions.find((t) => t.id === 'b').category, 'Zakupy');
 });

@@ -32,13 +32,20 @@ export const NEUTRAL = new Set(['Przelewy własne', 'Oszczędności i inwestycje
 const OWN_TRANSFER = ['przelew wlasny', 'przelew wewnetrzny', 'przelew miedzy rachunkami', 'przelew miedzy wlasnymi',
   'przeksiegowanie', 'transfer wlasny'];
 
+// Pośrednicy płatności i płatności odroczone (PayPo, Klarna): prawdziwy sklep
+// zwykle nie jest znany, a pieniądze idą na zakupy. Nie zapamiętujemy dla nich
+// reguł – jedna zmiana przestawiłaby wszystkie płatności przez pośrednika.
+const INTERMEDIARIES = ['paypo', 'klarna', 'twisto', 'spingo', 'payu', 'przelewy24', 'p24', 'tpay', 'dotpay',
+  'autopay', 'blue media', 'bluemedia', 'paypro', 'cashbill', 'imoje', 'paynow', 'paypal', 'nuvei',
+  'platnosc blik', 'transakcja blik', 'zakup blik'];
+
 // Kolejność ma znaczenie: bardziej szczegółowe wpisy (np. „uber eats”)
 // muszą stać przed ogólnymi („uber”). Słowa po normalizacji (bez ogonków).
 const KEYWORDS = [
   ['Podatki i ZUS', ['urzad skarbowy', 'izba administracji skarbowej', 'mikrorachunek', 'zus', 'zaklad ubezpieczen spol',
     'krus', 'podatek', 'podatku', 'pit-', 'vat-7', 'vat7', 'cit-']],
   // Pierwsze, bo opis spłaty często zawiera nazwę sklepu („PayPo – Allegro”).
-  ['Długi', ['paypo', 'klarna', 'twisto', 'spingo', 'splata kredytu', 'splata pozyczki', 'splata raty', 'splata karty',
+  ['Długi', ['splata kredytu', 'splata pozyczki', 'splata raty', 'splata karty',
     'splata zadluzenia', 'splata limitu', 'splata kapitalu', 'rata kredytu', 'rata pozyczki', 'odset', 'prow-kredyt',
     'provident', 'vivus', 'wonga',
     'smartney', 'ferratum', 'zaplo', 'netcredit', 'net credit', 'filarum', 'lendon', 'cofidis', 'santander consumer',
@@ -68,7 +75,9 @@ const KEYWORDS = [
     'oplata za karte', 'oplata miesieczna', 'miesieczna oplata', 'oplaty', 'ubezpieczen', 'splata skladki']],
   ['Zakupy', ['allegro', 'zalando', 'amazon', 'h&m', 'zara', 'reserved', 'sinsay', 'mohito', 'pepco', 'action ', 'ikea',
     'jysk', 'ccc', 'decathlon', 'media expert', 'rtv euro', 'mediamarkt', 'shein', 'temu', 'aliexpress', 'vinted',
-    'empik', 'smyk', 'tk maxx', 'deichmann', 'leroy', 'castorama', 'obi ']]
+    'empik', 'smyk', 'tk maxx', 'deichmann', 'leroy', 'castorama', 'obi ']],
+  // Na końcu: pośrednicy płatności. Sklep z opisu (np. „PayU – Pyszne”) wygrywa wcześniej.
+  ['Zakupy', INTERMEDIARIES]
 ];
 
 /**
@@ -98,6 +107,12 @@ function hasWord(haystack, word) {
   }
 }
 
+/** Czy kontrahent to pośrednik płatności (PayU, PayPo, „Płatność BLIK”…). */
+export function isIntermediary(name) {
+  const haystack = ` ${normalize(name)} `;
+  return INTERMEDIARIES.some((w) => hasWord(haystack, w));
+}
+
 /**
  * Klucz reguły „Zapamiętaj dla…”: osobny dla wydatków i wpływów od tego
  * samego kontrahenta (wpływy z prefiksem „+”). Reguła z wydatku nie może
@@ -105,6 +120,7 @@ function hasWord(haystack, word) {
  * @param {{name: string, amount: number}} tx
  */
 export function ruleKey(tx) {
+  if (isIntermediary(tx.name)) return '';
   const key = merchantKey(tx.name);
   return key && tx.amount > 0 ? `+${key}` : key;
 }
@@ -159,7 +175,7 @@ export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
     }
   }
   // AI dostaje tylko wydatki, więc jego podpowiedzi dotyczą tylko wydatków.
-  if (key && tx.amount < 0 && aiRules[key]) {
+  if (key && tx.amount < 0 && aiRules[key] && !isIntermediary(tx.name)) {
     // „Inne” od AI znaczy „nie wiem” – transakcja zostaje do sprawdzenia przez człowieka.
     return { category: aiRules[key], needsReview: aiRules[key] === 'Inne', source: 'ai' };
   }

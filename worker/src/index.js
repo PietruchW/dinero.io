@@ -35,9 +35,11 @@ Dla każdej pozycji (nazwa sklepu lub firmy i kwota w PLN) wybierz dokładnie je
 - Edukacja: szkoły i kursy (językowe i inne), korepetycje, czesne, platformy do nauki
 - Rachunki: prąd, gaz, internet, telefon, czynsz, ubezpieczenia, opłaty bankowe
 - Podatki i ZUS: urząd skarbowy, ZUS, KRUS, podatki lokalne
-- Długi: spłaty rat, pożyczek, kredytów i kart kredytowych, płatności odroczone (PayPo, Klarna, Twisto), firmy pożyczkowe
+- Długi: spłaty rat, pożyczek, kredytów i kart kredytowych, odsetki, firmy pożyczkowe
 - Subskrypcje: serwisy streamingowe, aplikacje, abonamenty cyfrowe
 - Oszczędności i inwestycje: giełdy kryptowalut (Binance, OKX), konta maklerskie, obligacje
+- Pośrednicy płatności i płatności odroczone (PayU, PayPo, Klarna, Przelewy24, BLIK) to Zakupy,
+  chyba że nazwa wskazuje konkretny sklep innej kategorii.
 - Inne: wszystko pozostałe albo gdy nie masz pewności
 Nie zgaduj na siłę – przy wątpliwości wybierz „Inne”.
 Odpowiedz wyłącznie obiektem JSON bez komentarzy, w formacie:

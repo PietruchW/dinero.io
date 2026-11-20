@@ -41,6 +41,8 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
   Kolejność: właścicielka → reguła użytkowniczki → opis przelewu własnego → słowa kluczowe → AI →
   domyślna. Reguły są osobne dla wydatków i wpływów (`ruleKey`: wpływy z prefiksem „+”),
   reguły AI tylko dla wydatków – wpływ nie może stać się ujemnym wydatkiem przez regułę.
+  Pośrednicy płatności i płatności odroczone (PayU, PayPo, Klarna, P24, „Płatność BLIK”) → Zakupy,
+  na końcu listy słów (sklep z opisu wygrywa); dla nich bez reguł „Zapamiętaj” i bez reguł AI.
 - `src/store.js` – stan, zapis, scalanie importów bez duplikatów (także po starym ID sprzed kont –
   poprawia kontrahenta, tytuł, konto i – bez ręcznej zmiany – kategorię; transakcje zachowują stare ID), filtr kont (z pozycją
   „Bez nazwy konta”), podsumowania, kopia zapasowa. Przy wczytaniu stare nazwy kont BNP
