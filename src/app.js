@@ -3,10 +3,11 @@
 
 import { readFile, analyzeRows } from './importer.js';
 import { CATEGORIES } from './categorize.js';
+import { parseAmount } from './detect.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
   exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings,
-  accounts, forAccount, spendingRatio
+  accounts, forAccount, spendingRatio, EXPENSE_CATEGORIES, setBudgets, budgetRows, averageSpending
 } from './store.js';
 import { AI_URL } from './config.js';
 import {
@@ -34,6 +35,9 @@ const MONTHS_NOM = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec'
   'Październik', 'Listopad', 'Grudzień'];
 
 const money = new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' });
+const moneyWhole = new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 });
+/** Kwota limitu: bez „,00”, gdy jest pełna. */
+const limitMoney = (v) => (Number.isInteger(v) ? moneyWhole : money).format(v);
 const app = document.getElementById('app');
 
 const ui = {
@@ -42,6 +46,8 @@ const ui = {
   account: null, // null = wszystkie konta
   rememberRules: true,
   onlyReview: false,
+  editLimits: false,
+  limitDraft: null, // wpisane, jeszcze niezapisane kwoty limitów
   pending: null, // { result, fileName }
   message: null,
   aiBusy: false,
@@ -212,6 +218,68 @@ function incomeRing(s, month) {
   </div>`;
 }
 
+const dot = (name) => `<span class="dot" style="background:${COLORS[name] ?? '#9A958C'}"></span>`;
+
+/** Lista kategorii z paskami. Z limitem pasek pokazuje jego wykorzystanie. */
+function categoriesCard(s) {
+  // Limity dotyczą wszystkich kont razem – przy filtrze konta ich nie pokazujemy.
+  const filtered = Boolean(ui.account);
+  const rows = budgetRows(s, filtered ? {} : state.budgets);
+  const max = Math.max(1, ...rows.filter((r) => !r.limit).map((r) => r.spent));
+  const over = rows.filter((r) => r.level === 'over').length;
+  const hasLimits = Object.keys(state.budgets).length > 0;
+  const row = (r) => {
+    if (!r.limit) {
+      return `<div class="cat-row">
+        <div class="cat-top"><span class="cat-name">${dot(r.category)}${esc(r.category)}</span>
+          <span>${esc(money.format(r.spent))}</span></div>
+        <div class="bar"><span style="width:${Math.max(2, Math.round((r.spent / max) * 100))}%"></span></div>
+      </div>`;
+    }
+    const note = r.level === 'over'
+      ? `Przekroczony o ${money.format(-r.left)}`
+      : `Zostało ${money.format(r.left)}`;
+    return `<div class="cat-row">
+      <div class="cat-top"><span class="cat-name">${dot(r.category)}${esc(r.category)}</span>
+        <span>${esc(money.format(r.spent))} <span class="muted">z ${esc(limitMoney(r.limit))}</span></span></div>
+      <div class="bar limit ${r.level}"><span style="width:${Math.max(2, Math.min(100, Math.round(r.ratio * 100)))}%"></span></div>
+      <span class="limit-note ${r.level}">${esc(note)}</span>
+    </div>`;
+  };
+  return `<section class="card">
+    <div class="card-head"><h2>Kategorie</h2>
+      ${filtered ? '' : `<button type="button" class="link-btn" data-action="edit-limits">${hasLimits ? 'Zmień limity' : 'Ustaw limity'}</button>`}
+    </div>
+    ${filtered && hasLimits ? '<p class="muted">Limity są liczone dla wszystkich kont razem – wybierz „Wszystkie konta”, żeby je zobaczyć.</p>' : ''}
+    ${over ? `<p class="limit-alert">${over === 1 ? 'Jedna kategoria jest' : `${over} kategorie są`} ponad limitem.</p>` : ''}
+    ${rows.length ? rows.map(row).join('') : '<p class="muted">Brak wydatków w tym miesiącu.</p>'}
+  </section>`;
+}
+
+/** Edycja limitów: pole na kwotę przy każdej kategorii i średnia z 3 miesięcy. */
+function limitsForm(month) {
+  const avg = averageSpending(state, month);
+  const fields = EXPENSE_CATEGORIES.map((c) => {
+    const saved = state.budgets[c];
+    const value = ui.limitDraft?.[c]
+      ?? (saved ? (Number.isInteger(saved) ? String(saved) : saved.toFixed(2).replace('.', ',')) : '');
+    return `<label class="limit-field">
+      <span class="limit-label"><span class="cat-name">${dot(c)}${esc(c)}</span>
+        <span class="muted">${avg[c] ? `średnio ${esc(money.format(avg[c]))} / mies.` : 'brak wydatków w ostatnich miesiącach'}</span></span>
+      <span class="limit-input"><input class="text-input" type="text" inputmode="decimal" autocomplete="off"
+        data-limit="${esc(c)}" value="${esc(value)}" placeholder="bez limitu" aria-label="Limit: ${esc(c)}"> zł</span>
+    </label>`;
+  }).join('');
+  return `<form class="card" data-action="limits-form" novalidate>
+    <h2>Miesięczne limity</h2>
+    <p class="muted">Ile chcesz wydawać w miesiącu na każdą kategorię. Puste pole – bez limitu. Średnie liczone są z ostatnich pełnych miesięcy.</p>
+    ${fields}
+    ${ui.message ? `<div class="msg ${ui.message.kind}" role="alert">${esc(ui.message.text)}</div>` : ''}
+    <button type="submit" class="btn">Zapisz limity</button>
+    <button type="button" class="btn secondary" data-action="cancel-limits">Anuluj</button>
+  </form>`;
+}
+
 function pulpitView() {
   const month = currentMonth();
   if (!month) return `<header><span class="eyebrow">Dinero</span><h1>Pulpit</h1></header>${emptyView()}`;
@@ -219,9 +287,8 @@ function pulpitView() {
   const view = forAccount(state, ui.account);
   const s = monthSummary(view, month);
   const review = view.transactions.filter((t) => t.date.startsWith(month) && t.needsReview).length;
-  const cats = Object.entries(s.byCategory).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  const max = cats.length ? cats[0][1] : 1;
   return `
+  ${ui.message && !ui.editLimits ? `<div class="msg ${ui.message.kind}">${esc(ui.message.text)}</div>` : ''}
   <header class="head-row">
     <div><span class="eyebrow">Wydatki</span><h1>${esc(monthLabel(month))}</h1></div>
     ${monthNav()}
@@ -239,17 +306,7 @@ function pulpitView() {
     <button type="button" class="btn secondary" data-action="go" data-view="ustawienia">Przejdź do ustawień</button>
   </section>`}
   ${review ? `<button type="button" class="badge" data-action="review">${review} do sprawdzenia →</button>` : ''}
-  <section class="card">
-    <h2>Kategorie</h2>
-    ${cats.length ? cats.map(([name, value]) => `
-      <div class="cat-row">
-        <div class="cat-top">
-          <span class="cat-name"><span class="dot" style="background:${COLORS[name] ?? '#9A958C'}"></span>${esc(name)}</span>
-          <span>${esc(money.format(value))}</span>
-        </div>
-        <div class="bar"><span style="width:${Math.max(2, Math.round((value / max) * 100))}%"></span></div>
-      </div>`).join('') : '<p class="muted">Brak wydatków w tym miesiącu.</p>'}
-  </section>`;
+  ${ui.editLimits ? limitsForm(month) : categoriesCard(s)}`;
 }
 
 function categorySelect(tx) {
@@ -446,7 +503,11 @@ function render() {
 }
 
 function go(view) {
-  if (view !== ui.view) ui.message = null;
+  if (view !== ui.view) {
+    ui.message = null;
+    ui.editLimits = false;
+    ui.limitDraft = null;
+  }
   ui.view = view;
   render();
   window.scrollTo(0, 0);
@@ -462,6 +523,18 @@ app.addEventListener('click', (e) => {
   if (!el) return;
   const action = el.dataset.action;
   if (action === 'go') go(el.dataset.view);
+  if (action === 'edit-limits') {
+    ui.editLimits = true;
+    ui.limitDraft = null;
+    ui.message = null;
+    render();
+  }
+  if (action === 'cancel-limits') {
+    ui.editLimits = false;
+    ui.limitDraft = null;
+    ui.message = null;
+    render();
+  }
   if (action === 'month') {
     const list = months(state);
     const i = list.indexOf(ui.month) + Number(el.dataset.step);
@@ -597,10 +670,41 @@ app.addEventListener('change', async (e) => {
 });
 
 app.addEventListener('submit', (e) => {
+  if (e.target.dataset.action === 'limits-form') {
+    e.preventDefault();
+    saveLimits(e.target);
+    return;
+  }
   if (e.target.dataset.action !== 'chat-form') return;
   e.preventDefault();
   sendChat(document.getElementById('chat-input').value);
 });
+
+function saveLimits(form) {
+  const limits = {};
+  const wrong = [];
+  const draft = {};
+  for (const input of form.querySelectorAll('[data-limit]')) {
+    const raw = input.value.trim();
+    draft[input.dataset.limit] = raw;
+    const value = raw === '' ? null : parseAmount(raw);
+    if (raw !== '' && (value === null || value < 0)) wrong.push(input.dataset.limit);
+    limits[input.dataset.limit] = value;
+  }
+  if (wrong.length) {
+    // Wpisane kwoty zostają w formularzu – poprawia się tylko błędne pole.
+    ui.limitDraft = draft;
+    ui.message = { kind: 'err', text: `Popraw kwotę: ${wrong.join(', ')}. Wpisz samą liczbę, np. 800 albo 450,50.` };
+    render();
+    return;
+  }
+  state = setBudgets(state, limits);
+  if (persist()) ui.message = { kind: 'ok', text: 'Limity zapisane.' };
+  ui.editLimits = false;
+  ui.limitDraft = null;
+  render();
+  window.scrollTo(0, 0);
+}
 
 app.addEventListener('keydown', (e) => {
   // Enter wysyła, Shift+Enter robi nową linię (na klawiaturze komputera).

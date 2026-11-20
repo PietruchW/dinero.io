@@ -6,7 +6,7 @@ import { categorize, merchantKey } from '../src/categorize.js';
 import {
   emptyState, mergeTransactions, setCategory, monthSummary, months,
   loadState, saveState, exportBackup, importBackup, STORAGE_KEY, setOwnerNames, recategorize, accounts, forAccount,
-  spendingRatio
+  spendingRatio, setBudgets, budgetRows, averageSpending, EXPENSE_CATEGORIES
 } from '../src/store.js';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -212,4 +212,54 @@ test('pierścień: część wpływów wydana, progi i brak wpływów', () => {
   assert.equal(over.level, 'over');
   assert.equal(over.left, -340);
   assert.equal(over.percent, 111);
+});
+
+test('limity: zapis, usuwanie, tylko kategorie wydatków; przetrwają zapis i kopię', () => {
+  let state = setBudgets(emptyState(), { 'Jedzenie': 1200.456, 'Wyjścia': 400, 'Przychód': 100, 'Nieznana': 5 });
+  assert.deepEqual(state.budgets, { 'Jedzenie': 1200.46, 'Wyjścia': 400 });
+  state = setBudgets(state, { 'Wyjścia': null, 'Zakupy': 0, 'Jedzenie': 900 });
+  assert.deepEqual(state.budgets, { 'Jedzenie': 900 });
+  assert.ok(!EXPENSE_CATEGORIES.includes('Przychód') && !EXPENSE_CATEGORIES.includes('Przelewy własne'));
+  assert.ok(EXPENSE_CATEGORIES.includes('Długi'));
+  const storage = memoryStorage();
+  saveState(storage, state);
+  assert.deepEqual(loadState(storage).budgets, { 'Jedzenie': 900 });
+  assert.deepEqual(importBackup(exportBackup(state)).budgets, { 'Jedzenie': 900 });
+});
+
+test('limity: śmieci w zapisie są pomijane, reszta danych zostaje', () => {
+  const storage = memoryStorage();
+  const state = mergeTransactions(emptyState(), readStatement(fixture('ing-like-cp1250.csv')).transactions).state;
+  saveState(storage, { ...state, budgets: { 'Jedzenie': 500, 'Zakupy': -3, 'Wyjścia': '200', 'Przychód': 10 } });
+  const loaded = loadState(storage);
+  assert.deepEqual(loaded.budgets, { 'Jedzenie': 500 });
+  assert.equal(loaded.transactions.length, state.transactions.length);
+});
+
+test('budgetRows: progi, kategorie z limitem bez wydatków, kolejność', () => {
+  const summary = { byCategory: { 'Jedzenie': 850, 'Wyjścia': 320, 'Zakupy': 1200, 'Inne': 40, 'Transport': -15 } };
+  const rows = budgetRows(summary, { 'Jedzenie': 1000, 'Wyjścia': 300, 'Zakupy': 2000, 'Subskrypcje': 100 });
+  assert.deepEqual(rows.map((r) => r.category), ['Zakupy', 'Jedzenie', 'Wyjścia', 'Inne', 'Subskrypcje']);
+  const by = Object.fromEntries(rows.map((r) => [r.category, r]));
+  assert.equal(by['Zakupy'].level, 'ok');
+  assert.equal(by['Jedzenie'].level, 'warn');
+  assert.equal(by['Jedzenie'].left, 150);
+  assert.equal(by['Wyjścia'].level, 'over');
+  assert.equal(by['Wyjścia'].left, -20);
+  assert.equal(by['Inne'].limit, null);
+  assert.equal(by['Subskrypcje'].spent, 0);
+  assert.equal(by['Subskrypcje'].level, 'ok');
+});
+
+test('averageSpending: średnia z pełnych miesięcy przed wybranym', () => {
+  const tx = (id, date, amount, category) =>
+    ({ id, date, amount, name: 'X', title: '', currency: 'PLN', category, needsReview: false, source: 'keyword', manual: false });
+  const state = { ...emptyState(), transactions: [
+    tx('a', '2026-11-05', -999, 'Jedzenie'),
+    tx('b', '2026-10-05', -300, 'Jedzenie'), tx('c', '2026-09-05', -500, 'Jedzenie'),
+    tx('d', '2026-08-05', -400, 'Jedzenie'), tx('e', '2026-07-05', -9000, 'Jedzenie'),
+    tx('f', '2026-10-06', -90, 'Wyjścia')
+  ] };
+  assert.deepEqual(averageSpending(state, '2026-11'), { 'Jedzenie': 400, 'Wyjścia': 30 });
+  assert.deepEqual(averageSpending(state, '2026-07'), {});
 });

@@ -59,7 +59,9 @@ Moduły poza `app.js` są czyste (bez DOM) i testowane w Node.
 ## Plan
 
 1. ✅ Fundament: import CSV, kategorie, zapis lokalny, kopia zapasowa, PWA.
-2. Ekrany wg makiety: limity per kategoria, cele oszczędnościowe, dopracowany wygląd.
+2. Ekrany wg makiety: ✅ pierścień „ile z wpływów wydano” (miesiąc kalendarzowy – wypłata do 10.),
+   ✅ limity per kategoria (`state.budgets`, ustawia je sama użytkowniczka; przy filtrze konta ukryte,
+   bo liczone dla wszystkich kont), cele oszczędnościowe, dopracowany wygląd.
 3. AI: ✅ podpowiedzi kategorii. Worker: `https://dinero-ai.w-pietraszewski.workers.dev`
    (wdrażany automatycznie przez Cloudflare Workers Builds z katalogu `worker/` po każdym
    scaleniu do `main`). ✅ Czat o wydatkach (`/chat`, zakładka Czat, domyślnie wyłączony,
