@@ -28,7 +28,10 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
 - `src/detect.js` – wiersz nagłówka, kolumny, kwoty, daty, identyfikatory transakcji.
   Wycina numery kont i kart z nazw i tytułów; opis karty BNP → sam sklep.
   ID z surowych danych (`data|kwota|kontrahent|tytuł`, plus klucz konta, gdy jest) –
-  bez konta ID musi zostać takie jak dotąd (test z zapisanymi ID).
+  bez konta ID musi zostać takie jak dotąd (test z zapisanymi ID). Kontrahent: przy wpływie
+  nadawca, przy wydatku odbiorca (Alior: „Nazwa nadawcy”/„Nazwa odbiorcy”). Gdy zmienia się sposób
+  liczenia ID, transakcja dostaje `legacyIds` (stare warianty) – scalanie rozpoznaje po nich
+  już wczytane i poprawia je zamiast dublować. Nigdy nie usuwaj starych wariantów.
 - `src/importer.js` – `readFile(bytes, label?)` (CSV lub .xlsx), `analyzeRows` przy zmianie mapowania
   lub nazwy konta. Konto: nazwa wpisana przy imporcie i/lub kolumna „Produkt”. Wyświetlana nazwa
   konta idzie po numerze rachunku („BNP •5424” – karta i konto z tym samym numerem to jedno konto),
@@ -36,7 +39,7 @@ Prosta aplikacja budżetowa (PWA) dla jednej osoby, używana na iPhonie przez Sa
 - `src/categorize.js` – kategorie, słowa kluczowe, reguły „Zapamiętaj dla…”,
   przelewy własne (po opisie lub imieniu i nazwisku właścicielki; nie liczą się do sum).
 - `src/store.js` – stan, zapis, scalanie importów bez duplikatów (także po starym ID sprzed kont –
-  wtedy tylko dopisuje konto; transakcje zachowują stare ID na zawsze), filtr kont (z pozycją
+  poprawia kontrahenta, tytuł, konto i – bez ręcznej zmiany – kategorię; transakcje zachowują stare ID), filtr kont (z pozycją
   „Bez nazwy konta”), podsumowania, kopia zapasowa. Przy wczytaniu stare nazwy kont BNP
   „X · Produkt •1234” → „X •1234”.
 - `src/app.js` – UI (renderowanie stringów + delegacja zdarzeń). Jedyny plik z DOM.

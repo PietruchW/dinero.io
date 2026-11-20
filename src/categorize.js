@@ -11,6 +11,7 @@ export const CATEGORIES = [
   'Podróże',
   'Kosmetyki i zdrowie',
   'Rachunki',
+  'Podatki i ZUS',
   'Długi',
   'Subskrypcje',
   'Inne',
@@ -29,6 +30,8 @@ const OWN_TRANSFER = ['przelew wlasny', 'przelew wewnetrzny', 'przelew miedzy ra
 // Kolejność ma znaczenie: bardziej szczegółowe wpisy (np. „uber eats”)
 // muszą stać przed ogólnymi („uber”). Słowa po normalizacji (bez ogonków).
 const KEYWORDS = [
+  ['Podatki i ZUS', ['urzad skarbowy', 'izba administracji skarbowej', 'mikrorachunek', 'zus', 'zaklad ubezpieczen spol',
+    'krus', 'podatek', 'podatku', 'pit-', 'vat-7', 'vat7', 'cit-']],
   // Pierwsze, bo opis spłaty często zawiera nazwę sklepu („PayPo – Allegro”).
   ['Długi', ['paypo', 'klarna', 'twisto', 'spingo', 'splata kredytu', 'splata pozyczki', 'splata raty', 'splata karty',
     'splata zadluzenia', 'splata limitu', 'splata kapitalu', 'rata kredytu', 'rata pozyczki', 'odset', 'prow-kredyt',
@@ -39,7 +42,7 @@ const KEYWORDS = [
     'costa coffee', 'restauracja', 'pizz', 'sushi', 'kebab', 'kawiarnia', 'cafe', 'bistro', 'pub ', 'helios',
     'multikino', 'cinema city', 'ebilet']],
   ['Subskrypcje', ['netflix', 'spotify', 'apple.com', 'icloud', 'youtube', 'google one', 'disney', 'hbo', 'canal+',
-    'chatgpt', 'openai', 'anthropic', 'claude.ai', 'amazon prime', 'audible', 'legimi', 'empik go', 'tidal', 'skyshowtime']],
+    'chatgpt', 'openai', 'anthropic', 'claude.ai', 'amazon prime', 'prime video', 'audible', 'legimi', 'empik go', 'tidal', 'skyshowtime']],
   ['Jedzenie', ['lidl', 'biedronka', 'kaufland', 'aldi', 'auchan', 'carrefour', 'netto', 'zabka', 'dino', 'stokrotka',
     'frisco', 'lewiatan', 'polomarket', 'spar', 'intermarche', 'delikatesy', 'piekarnia', 'mieso', 'warzywa']],
   ['Podróże', ['booking.com', 'airbnb', 'ryanair', 'wizz air', 'wizzair', 'lot polish', 'pll lot', 'enter air',
@@ -118,8 +121,9 @@ export function categorize(tx, userRules = {}, ownerNames = [], aiRules = {}) {
     return { category: 'Przelewy własne', needsReview: false, source: 'owner' };
   }
   for (const [category, words] of KEYWORDS) {
-    // Wpływ z „odsetkami” to zarobek na oszczędnościach, nie dług.
-    if (category === 'Długi' && tx.amount > 0) continue;
+    // Wpływ z „odsetkami” to zarobek na oszczędnościach, nie dług;
+    // wpływ od urzędu skarbowego to zwrot podatku, czyli przychód.
+    if ((category === 'Długi' || category === 'Podatki i ZUS') && tx.amount > 0) continue;
     if (words.some((w) => hasWord(haystack, w))) {
       // Kwota dodatnia u sklepu to zwrot – zostaje w kategorii sklepu.
       return { category, needsReview: false, source: 'keyword' };

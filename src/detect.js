@@ -74,10 +74,17 @@ export function parseDate(raw) {
 const HEADER_HINTS = {
   date: ['data transakcji', 'data operacji', 'data zlecenia', 'data waluty', 'data ksiegowania', 'data', 'date'],
   amount: ['kwota transakcji', 'kwota operacji', 'kwota w walucie rachunku', 'kwota', 'amount'],
-  name: ['dane kontrahenta', 'kontrahent', 'nadawca / odbiorca', 'nadawca/odbiorca', 'odbiorca', 'nazwa', 'merchant', 'payee'],
+  name: ['dane kontrahenta', 'kontrahent', 'nadawca / odbiorca', 'nadawca/odbiorca', 'nazwa odbiorcy', 'dane odbiorcy',
+    'odbiorca', 'nazwa', 'merchant', 'payee'],
   title: ['tytul', 'opis transakcji', 'opis operacji', 'opis', 'szczegoly', 'description'],
   currency: ['waluta', 'currency']
 };
+
+// Jak kolumnę kontrahenta wybierały wersje przed 20.11.2026 – przy osobnych
+// kolumnach „Nazwa nadawcy” i „Nazwa odbiorcy” (Alior) brały nadawcę. Potrzebne,
+// żeby ponowny import starego pliku rozpoznał już wczytane transakcje.
+const LEGACY_NAME_HINTS = ['dane kontrahenta', 'kontrahent', 'nadawca / odbiorca', 'nadawca/odbiorca', 'odbiorca', 'nazwa',
+  'merchant', 'payee'];
 
 // Kolumny, których nigdy nie bierzemy jako kwoty transakcji.
 const AMOUNT_EXCLUDE = ['blokad', 'saldo', 'balance', 'w walucie obcej', 'platnosci w walucie'];
@@ -122,7 +129,8 @@ export function findHeaderRow(rows) {
  * @param {string[][]} rows
  * @param {number} headerIndex
  * @returns {{date: number|null, amount: number|null, name: number|null, title: number|null, currency: number|null,
- *   sender?: number|null, account?: number|null, status?: number|null, type?: number|null}}
+ *   sender?: number|null, account?: number|null, status?: number|null, type?: number|null,
+ *   legacyName?: number|null}}
  */
 export function detectColumns(rows, headerIndex) {
   if (headerIndex >= 0) {
@@ -148,11 +156,13 @@ export function detectColumns(rows, headerIndex) {
       used.add(idx);
       return idx;
     };
-    const sender = exact(['nadawca']);
+    const sender = exact(['nadawca', 'nazwa nadawcy', 'dane nadawcy']);
     const account = exact(['produkt']);
     const status = exact(['status', 'status transakcji', 'status operacji']);
     const type = exact(['typ transakcji', 'typ operacji']);
-    return { date, amount, name, title, currency, sender, account, status, type };
+    const legacy = findColumn(headers, LEGACY_NAME_HINTS, new Set([date, amount].filter((i) => i !== null)));
+    const legacyName = legacy !== name ? legacy : null;
+    return { date, amount, name, title, currency, sender, account, status, type, legacyName };
   }
   return detectByContent(rows);
 }
@@ -305,6 +315,7 @@ export function toTransactions(rows, headerIndex, mapping, options = {}) {
   const label = String(options.label ?? '').trim().slice(0, 40);
   const seen = new Map();
   const seenLegacy = new Map();
+  const seenOld = new Map();
   const out = [];
   const cell = (r, key) => (mapping[key] != null ? r[mapping[key]] ?? '' : '');
   for (let i = headerIndex + 1; i < rows.length; i += 1) {
@@ -341,12 +352,24 @@ export function toTransactions(rows, headerIndex, mapping, options = {}) {
     }
     const tx = { id: hash(`${key}#${n}`), date, amount, name: name || title, title: name ? title : '', currency };
     if (account) tx.account = account;
+    // Identyfikatory, jakie ta transakcja mogła dostać w starszych wersjach –
+    // do rozpoznania już wczytanych (bez duplikatów, z poprawą nazwy i konta).
+    const legacyIds = [];
     if (accountKey) {
-      // Identyfikator, jaki ta transakcja miała przed dodaniem kont.
+      // Przed dodaniem kont: bez klucza konta.
       const m = (seenLegacy.get(base) ?? 0) + 1;
       seenLegacy.set(base, m);
-      tx.legacyId = hash(`${base}#${m}`);
+      legacyIds.push(hash(`${base}#${m}`));
     }
+    if (mapping.legacyName != null) {
+      // Przed 20.11.2026: kontrahent z innej kolumny (np. nadawca zamiast odbiorcy).
+      const oldBase = `${date}|${amount.toFixed(2)}|${normalize(r[mapping.legacyName] ?? '')}|${normalize(rawTitle)}`;
+      const m = (seenOld.get(oldBase) ?? 0) + 1;
+      seenOld.set(oldBase, m);
+      legacyIds.push(hash(`${oldBase}#${m}`));
+    }
+    const others = [...new Set(legacyIds)].filter((id) => id !== tx.id);
+    if (others.length) tx.legacyIds = others;
     out.push(tx);
   }
   return out;

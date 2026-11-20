@@ -179,7 +179,7 @@ test('kategoria Długi: raty, PayPo, odsetki; wpływ z odsetkami to przychód', 
 test('wyciąg z dwóch kont w jednym pliku: przelew między nimi jest neutralny', async () => {
   const r = await readFile(fixture('bnp-like.xlsx'));
   const state = mergeTransactions(setOwnerNames(emptyState(), ['Anna Nowak']), r.transactions).state;
-  assert.ok(state.transactions.every((t) => t.legacyId === undefined));
+  assert.ok(state.transactions.every((t) => t.legacyIds === undefined));
   const own = state.transactions.filter((t) => t.category === 'Przelewy własne');
   assert.equal(own.length, 2);
   assert.deepEqual(accounts(state), ['Rachunek •0001', 'Rachunek •0002']);
@@ -192,13 +192,13 @@ test('wyciąg z dwóch kont w jednym pliku: przelew między nimi jest neutralny'
 test('ponowny import z nazwą konta: bez duplikatów, stare transakcje dostają konto', () => {
   const before = mergeTransactions(emptyState(), readStatement(fixture('ing-like-cp1250.csv')).transactions).state;
   const ing = readStatement(fixture('ing-like-cp1250.csv'), undefined, 'ING').transactions;
-  const { state, added, duplicates, named } = mergeTransactions(before, ing);
+  const { state, added, duplicates, updated } = mergeTransactions(before, ing);
   assert.equal(added, 0);
-  assert.equal(named, ing.length);
+  assert.equal(updated, ing.length);
   assert.equal(duplicates, 0);
   // Drugi raz to już zwykłe duplikaty.
   const again = mergeTransactions(state, ing);
-  assert.deepEqual([again.added, again.named, again.duplicates], [0, 0, ing.length]);
+  assert.deepEqual([again.added, again.updated, again.duplicates], [0, 0, ing.length]);
   // Ta sama nazwa inną wielkością liter – też bez duplikatów.
   const lower = mergeTransactions(state, readStatement(fixture('ing-like-cp1250.csv'), undefined, 'ing').transactions);
   assert.deepEqual([lower.added, lower.duplicates], [0, ing.length]);
@@ -297,4 +297,70 @@ test('filtr „Bez nazwy konta”: transakcje wczytane przed dodaniem kont', () 
   assert.equal(none.transactions.length, plain.transactions.length);
   assert.ok(none.transactions.every((t) => !t.account));
   assert.deepEqual(accounts(named), ['Wspólne']);
+});
+
+// Identyfikatory, które dla pliku alior-like policzyła wersja sprzed 20.11.2026
+// (kontrahent z kolumny „Nazwa nadawcy”). Tak zapisane są dane w telefonach.
+const ALIOR_OLD_IDS = ['mp2079', '18atx4d', 'km2s25', '6arrln', 'g3oyd2', 'eepsos', '1qhs53e', 'znuryr'];
+
+function oldAliorState() {
+  // Stara logika: kontrahent zawsze z kolumny nadawcy (2), bez nadawcy/odbiorcy osobno.
+  const old = readStatement(fixture('alior-like-cp1250.csv'), { date: 0, amount: 5, name: 2, title: 4, currency: 6 });
+  assert.deepEqual(old.transactions.map((t) => t.id), ALIOR_OLD_IDS);
+  return mergeTransactions(setOwnerNames(emptyState(), ['Anna Nowak']), old.transactions).state;
+}
+
+test('Alior: przy wydatku kontrahentem jest odbiorca, przy wpływie nadawca', () => {
+  const r = readStatement(fixture('alior-like-cp1250.csv'));
+  assert.equal(r.mapping.name, 3);
+  assert.equal(r.mapping.sender, 2);
+  const names = r.transactions.map((t) => t.name);
+  assert.deepEqual(names, ['Urząd Skarbowy - Kartuzy', 'ZUS', 'Anna Nowak', 'Jan Kowalski', 'FIRMA KLIENT SP. Z O.O.',
+    'LIDL KARTUSKA 01 Gdansk PL', 'Prime Video', 'URZĄD SKARBOWY W KARTUZACH']);
+  const state = mergeTransactions(setOwnerNames(emptyState(), ['Anna Nowak']), r.transactions).state;
+  const cat = Object.fromEntries(state.transactions.map((t) => [`${t.name} ${t.amount}`, t.category]));
+  assert.equal(cat['Urząd Skarbowy - Kartuzy -2449.37'], 'Podatki i ZUS');
+  assert.equal(cat['ZUS -1723'], 'Podatki i ZUS');
+  assert.equal(cat['Anna Nowak -4706'], 'Przelewy własne');
+  assert.equal(cat['Jan Kowalski -450'], 'Inne');
+  // Zwrot podatku to wpływ, nie podatek.
+  assert.equal(cat['URZĄD SKARBOWY W KARTUZACH 3073'], 'Przychód');
+});
+
+test('Alior: ponowny import naprawia stare transakcje bez duplikatów', () => {
+  const before = oldAliorState();
+  // Błąd starej wersji: podatki jako przelewy własne.
+  assert.equal(before.transactions.filter((t) => t.category === 'Przelewy własne').length, 5);
+  const fixedRow = before.transactions.find((t) => t.amount === -1723);
+  const manual = setCategory(before, before.transactions.find((t) => t.amount === -450).id, 'Zakupy');
+  const r = readStatement(fixture('alior-like-cp1250.csv'), undefined, 'Alior firma');
+  const { state, added, updated, duplicates } = mergeTransactions(manual, r.transactions);
+  assert.equal(added, 0);
+  assert.equal(state.transactions.length, before.transactions.length);
+  assert.equal(updated + duplicates, r.transactions.length);
+  assert.ok(updated >= 5);
+  // Identyfikatory zostają stare, transakcje dostają nazwę konta i właściwego kontrahenta.
+  assert.deepEqual(state.transactions.map((t) => t.id).sort(), [...ALIOR_OLD_IDS].sort());
+  assert.ok(state.transactions.every((t) => t.account === 'Alior firma'));
+  const zus = state.transactions.find((t) => t.id === fixedRow.id);
+  assert.equal(zus.name, 'ZUS');
+  assert.equal(zus.category, 'Podatki i ZUS');
+  assert.equal(state.transactions.filter((t) => t.category === 'Przelewy własne').length, 1);
+  // Kategoria zmieniona ręcznie zostaje, choć nazwa się poprawiła.
+  const kowalski = state.transactions.find((t) => t.amount === -450);
+  assert.equal(kowalski.name, 'Jan Kowalski');
+  assert.equal(kowalski.category, 'Zakupy');
+  // Kolejne importy tego samego pliku: nic nowego i nic do poprawy.
+  const again = mergeTransactions(state, readStatement(fixture('alior-like-cp1250.csv'), undefined, 'Alior firma').transactions);
+  assert.deepEqual([again.added, again.updated, again.duplicates], [0, 0, r.transactions.length]);
+  const noLabel = mergeTransactions(state, readStatement(fixture('alior-like-cp1250.csv')).transactions);
+  assert.equal(noLabel.added, 0);
+});
+
+test('Alior: ponowny import bez nazwy konta też naprawia', () => {
+  const before = oldAliorState();
+  const { state, added } = mergeTransactions(before, readStatement(fixture('alior-like-cp1250.csv')).transactions);
+  assert.equal(added, 0);
+  assert.equal(state.transactions.find((t) => t.amount === -2449.37).category, 'Podatki i ZUS');
+  assert.ok(state.transactions.every((t) => !t.account));
 });

@@ -56,7 +56,8 @@ test('wyciąg w stylu ING: nagłówek, kolumny i transakcje', () => {
   assert.equal(header, 4);
   const cols = detectColumns(rows, header);
   assert.deepEqual(cols, {
-    date: 0, amount: 8, name: 2, title: 3, currency: 9, sender: null, account: null, status: null, type: null
+    date: 0, amount: 8, name: 2, title: 3, currency: 9, sender: null, account: null, status: null, type: null,
+    legacyName: null
   });
   const txs = toTransactions(rows, header, cols);
   // Blokada bez kwoty transakcji (Rossmann) nie wchodzi.
@@ -104,7 +105,7 @@ test('nazwa konta przy imporcie: inne ID, stare ID zapamiętane do scalania', ()
   const ing = readStatement(fixture('ing-like-cp1250.csv'), undefined, 'ING').transactions;
   const other = readStatement(fixture('ing-like-cp1250.csv'), undefined, 'Wspólne').transactions;
   assert.ok(ing.every((t) => t.account === 'ING'));
-  assert.deepEqual(ing.map((t) => t.legacyId), plain.map((t) => t.id));
+  assert.deepEqual(ing.map((t) => t.legacyIds), plain.map((t) => [t.id]));
   assert.notDeepEqual(ing.map((t) => t.id), plain.map((t) => t.id));
   assert.notDeepEqual(ing.map((t) => t.id), other.map((t) => t.id));
   // Wielkość liter w nazwie konta nie zmienia ID.

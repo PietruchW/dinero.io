@@ -99,42 +99,54 @@ function ownerNames(state) {
 /**
  * Dokłada transakcje z importu. Te, które już są (ten sam identyfikator),
  * pomija – można bezpiecznie wczytać zachodzące na siebie wyciągi.
- * Transakcja wczytana wcześniej bez konta (stary identyfikator) też jest
- * duplikatem – dostaje wtedy tylko nazwę konta.
- * @returns {{state: object, added: number, duplicates: number, named: number}}
+ * Transakcję wczytaną starszą wersją (inny identyfikator, `legacyIds`) też
+ * rozpoznaje jako już wczytaną i poprawia w niej to, co nowy import czyta
+ * lepiej: kontrahenta, tytuł, nazwę konta i – jeśli nie była zmieniona
+ * ręcznie – kategorię. Identyfikator zostaje stary.
+ * @returns {{state: object, added: number, duplicates: number, updated: number}}
  */
 export function mergeTransactions(state, incoming) {
   const known = new Set(state.transactions.map((t) => t.id));
-  // Transakcje po starym ID: wczytane bez konta albo takie, które dostały
-  // konto przy wcześniejszym ponownym imporcie (zachowują stare ID).
-  const legacy = new Map(state.transactions.map((t) => [t.id, t]));
-  const adopt = new Map();
+  const byId = new Map(state.transactions.map((t) => [t.id, t]));
+  const patches = new Map();
   const fresh = [];
   let duplicates = 0;
-  for (const { legacyId, ...tx } of incoming) {
+  // Import bez nazwy konta nie przeczy żadnemu kontu – pasuje do każdego.
+  const sameAccount = (old, tx) => !old.account || !tx.account || normalize(old.account) === normalize(tx.account);
+  for (const { legacyIds = [], legacyId, ...tx } of incoming) {
     if (known.has(tx.id)) {
       duplicates += 1;
       continue;
     }
-    const old = legacyId ? legacy.get(legacyId) : null;
-    if (old && !adopt.has(legacyId) && (!old.account || normalize(old.account) === normalize(tx.account))) {
-      // Bez konta – dopisujemy je; z tym samym kontem – zwykły duplikat.
-      adopt.set(legacyId, old.account ? null : tx.account);
-      duplicates += 1;
+    const oldId = [...legacyIds, ...(legacyId ? [legacyId] : [])]
+      .find((id) => byId.has(id) && !patches.has(id) && sameAccount(byId.get(id), tx));
+    if (oldId) {
+      patches.set(oldId, tx);
       continue;
     }
     known.add(tx.id);
     const { category, needsReview, source } = categorize(tx, state.rules, ownerNames(state), state.aiRules);
     fresh.push({ ...tx, category, needsReview, source, manual: false });
   }
-  const existing = adopt.size
-    ? state.transactions.map((t) => (adopt.has(t.id) && adopt.get(t.id) ? { ...t, account: adopt.get(t.id) } : t))
-    : state.transactions;
+  let updated = 0;
+  const existing = state.transactions.map((t) => {
+    const tx = patches.get(t.id);
+    if (!tx) return t;
+    const next = { ...t, name: tx.name, title: tx.title };
+    if (!t.account && tx.account) next.account = tx.account;
+    if (next.name !== t.name || next.title !== t.title) {
+      if (!t.manual) Object.assign(next, categorize(next, state.rules, ownerNames(state), state.aiRules));
+    }
+    const changed = next.name !== t.name || next.title !== t.title || next.account !== t.account ||
+      next.category !== t.category;
+    if (changed) updated += 1;
+    else duplicates += 1;
+    return changed ? next : t;
+  });
   const transactions = [...existing, ...fresh].sort((a, b) =>
     a.date === b.date ? 0 : a.date < b.date ? 1 : -1
   );
-  const named = [...adopt.values()].filter(Boolean).length;
-  return { state: { ...state, transactions }, added: fresh.length, duplicates: duplicates - named, named };
+  return { state: { ...state, transactions }, added: fresh.length, duplicates, updated };
 }
 
 /** Wartość filtra dla transakcji wczytanych bez nazwy konta. */

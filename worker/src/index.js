@@ -12,6 +12,7 @@ export const CATEGORIES = [
   'Podróże',
   'Kosmetyki i zdrowie',
   'Rachunki',
+  'Podatki i ZUS',
   'Długi',
   'Subskrypcje',
   'Inne'
@@ -30,6 +31,7 @@ Dla każdej pozycji (nazwa sklepu lub firmy i kwota w PLN) wybierz dokładnie je
 - Podróże: wyjazdy i urlopy – linie lotnicze, hotele, noclegi, biura podróży, wypożyczalnie aut za granicą
 - Kosmetyki i zdrowie: drogerie, apteki, lekarze, dentysta, fryzjer, kosmetyczka, siłownia
 - Rachunki: prąd, gaz, internet, telefon, czynsz, ubezpieczenia, opłaty bankowe
+- Podatki i ZUS: urząd skarbowy, ZUS, KRUS, podatki lokalne
 - Długi: spłaty rat, pożyczek, kredytów i kart kredytowych, płatności odroczone (PayPo, Klarna, Twisto), firmy pożyczkowe
 - Subskrypcje: serwisy streamingowe, aplikacje, abonamenty cyfrowe
 - Inne: wszystko pozostałe albo gdy nie masz pewności
