@@ -235,6 +235,25 @@ export function cleanParty(text) {
  * cyfry numeru, np. „Konto Osobiste •1234”. Pełny numer nie jest zapisywany.
  */
 export function accountLabel(text) {
+  const { name, last4 } = accountParts(text);
+  if (name && last4) return `${name} •${last4}`;
+  return name || (last4 ? `Rachunek •${last4}` : '');
+}
+
+/**
+ * Nazwa konta do wyświetlania. Rachunek rozpoznajemy po numerze – karta
+ * podpięta do konta („Karta Otwarta na Dzisiaj”) to to samo konto co
+ * „Konto Osobiste” z tym samym numerem.
+ * @param {string} label nazwa wpisana przy imporcie
+ * @param {string} product zawartość kolumny „Produkt”
+ */
+export function accountDisplay(label, product) {
+  const { name, last4 } = accountParts(product);
+  if (last4) return `${label || 'Rachunek'} •${last4}`;
+  return [label, name].filter(Boolean).join(' · ');
+}
+
+function accountParts(text) {
   let name = '';
   let last4 = '';
   for (const line of lines(text)) {
@@ -245,8 +264,7 @@ export function accountLabel(text) {
       name = scrubNumbers(line);
     }
   }
-  if (name && last4) return `${name} •${last4}`;
-  return name || (last4 ? `Rachunek •${last4}` : '');
+  return { name, last4 };
 }
 
 // Opis płatności kartą w BNP: numer karty, pole 20 znaków z nazwiskiem
@@ -302,8 +320,10 @@ export function toTransactions(rows, headerIndex, mapping, options = {}) {
     // ID z surowych danych – tak jak w poprzednich wersjach, żeby ponowny
     // import starego pliku nie zrobił duplikatów.
     const base = `${date}|${amount.toFixed(2)}|${normalize(rawName)}|${normalize(rawTitle)}`;
+    // Klucz do ID z nazwy produktu i numeru – tak jak od początku, żeby
+    // ponowny import nie zrobił duplikatów. Wyświetlana nazwa – po numerze.
     const product = accountLabel(cell(r, 'account'));
-    const account = [label, product].filter(Boolean).join(' · ');
+    const account = accountDisplay(label, cell(r, 'account'));
     // Z kolumny „Produkt” klucz konta jest stały; bez niej – nazwa z importu.
     const accountKey = product ? normalize(product) : normalize(label);
     const key = accountKey ? `${accountKey}|${base}` : base;

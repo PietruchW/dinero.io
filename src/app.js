@@ -7,7 +7,7 @@ import { parseAmount } from './detect.js';
 import {
   loadState, saveState, mergeTransactions, setCategory, monthSummary, months,
   exportBackup, importBackup, emptyState, setOwnerNames, recategorize, setAiEnabled, setAiToken, setChatSettings,
-  accounts, forAccount, spendingRatio, EXPENSE_CATEGORIES, setBudgets, budgetRows, averageSpending
+  accounts, forAccount, spendingRatio, NO_ACCOUNT, hasUnnamedAccount, EXPENSE_CATEGORIES, setBudgets, budgetRows, averageSpending
 } from './store.js';
 import { AI_URL } from './config.js';
 import {
@@ -171,16 +171,20 @@ function monthNav() {
 /** Wybór konta – widoczny dopiero, gdy w danych są co najmniej dwa konta. */
 function accountFilter() {
   const list = accounts(state);
-  if (list.length < 2) {
+  const unnamed = hasUnnamedAccount(state);
+  if (list.length + (unnamed ? 1 : 0) < 2) {
     ui.account = null;
     return '';
   }
-  if (ui.account && !list.includes(ui.account)) ui.account = null;
-  const opts = list.map((a) => `<option value="${esc(a)}" ${a === ui.account ? 'selected' : ''}>${esc(a)}</option>`);
+  const values = unnamed ? [...list, NO_ACCOUNT] : list;
+  if (ui.account && !values.includes(ui.account)) ui.account = null;
+  const opts = values.map((a) => `<option value="${esc(a)}" ${a === ui.account ? 'selected' : ''}>${
+    a === NO_ACCOUNT ? 'Bez nazwy konta' : esc(a)}</option>`);
   return `<label class="field account-filter"><span class="visually-hidden">Konto</span>
     <select data-action="account">
       <option value="" ${ui.account ? '' : 'selected'}>Wszystkie konta</option>${opts.join('')}
-    </select></label>`;
+    </select></label>
+    ${ui.account === NO_ACCOUNT ? '<p class="muted">Transakcje wczytane, zanim można było podać nazwę konta. Wczytaj te pliki jeszcze raz z nazwą konta – nic się nie zdubluje, a transakcje dostaną nazwę.</p>' : ''}`;
 }
 
 function emptyView() {
@@ -321,7 +325,7 @@ function transakcjeView() {
   const month = currentMonth();
   if (!month) return `<header><h1>Transakcje</h1></header>${emptyView()}`;
   const filter = accountFilter();
-  const showAccount = !ui.account && accounts(state).length > 1;
+  const showAccount = !ui.account && accounts(state).length + (hasUnnamedAccount(state) ? 1 : 0) > 1;
   const list = forAccount(state, ui.account).transactions
     .filter((t) => t.date.startsWith(month) && (!ui.onlyReview || t.needsReview));
   const byDay = new Map();
@@ -546,12 +550,13 @@ app.addEventListener('click', (e) => {
     go('transakcje');
   }
   if (action === 'do-import' && ui.pending) {
-    const { state: next, added, duplicates } = mergeTransactions(state, ui.pending.result.transactions);
+    const { state: next, added, duplicates, named } = mergeTransactions(state, ui.pending.result.transactions);
     state = next;
     if (persist()) {
       ui.message = {
         kind: 'ok',
-        text: `Dodano ${added} transakcji.${duplicates ? ` Pominięto ${duplicates} już wczytanych.` : ''}`
+        text: `Dodano ${added} transakcji.${named ? ` ${named} wcześniej wczytanych dostało nazwę konta.` : ''}${
+          duplicates ? ` Pominięto ${duplicates} już wczytanych.` : ''}`
       };
     }
     ui.pending = null;
